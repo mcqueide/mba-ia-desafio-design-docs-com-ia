@@ -1,0 +1,328 @@
+{
+  "meta": {
+    "product_or_system": "API de gerenciamento de pedidos",
+    "feature_name": "Webhooks de mudanças de status de pedidos",
+    "fdd_owner": "Larissa, Tech Lead",
+    "version": "1.0, proposta para revisão",
+    "date": "2026-11-03"
+  },
+  "context": {
+    "technical_motivation": "Notificar clientes sobre mudanças de status sem consultas repetidas e sem acoplar a operação de pedidos à disponibilidade do destinatário.",
+    "fit_with_hld": "Outbox MySQL transacional e worker assíncrono separado, conforme RFC-001 e ADRs 003, 004 e 007, ainda propostos.",
+    "actors": [
+      "Usuário autenticado vinculado ao cliente",
+      "Administrador do cliente",
+      "Worker de webhooks",
+      "Sistema destinatário"
+    ],
+    "assumptions": [
+      "Contratos, nomes de campos, estados internos e códigos não definidos nas fontes são propostas para revisão.",
+      "Relógios sincronizados quando a proteção de timestamp estiver habilitada.",
+      "O limite de seis reservas por ciclo refina as seis chamadas máximas da RFC e do ADR-007, que precisam ser reconciliados."
+    ],
+    "constraints": [
+      "Uma única instância de worker ativa.",
+      "A atomicidade cobre a mudança de status e o registro de eventos elegíveis, não a recepção HTTP.",
+      "O provedor e a versão do secret manager ainda não foram escolhidos."
+    ]
+  },
+  "technical_objectives": [
+    {
+      "objective": "Persistir eventos elegíveis com a mudança de status.",
+      "measure_or_invariant": "Evento e entregas por endpoint são registrados na mesma transação; falha de persistência reverte a transação."
+    },
+    {
+      "objective": "Autenticar notificações e permitir deduplicação.",
+      "measure_or_invariant": "HMAC-SHA256 verificável e event_id estável entre endpoints, retentativas e replays da mesma mudança."
+    },
+    {
+      "objective": "Limitar retentativas e preservar a ordem acordada por pedido.",
+      "measure_or_invariant": "Até seis reservas por ciclo; eventos posteriores do pedido aguardam enquanto alguma entrega anterior estiver em retentativa."
+    },
+    {
+      "objective": "Buscar baixa latência sem prometer entrega em prazo fixo.",
+      "measure_or_invariant": "Objetivo inferior a 10 segundos em condições favoráveis, sem SLO ou garantia sob backlog ou falhas."
+    },
+    {
+      "objective": "Isolar acesso por cliente.",
+      "measure_or_invariant": "Operações exigem vínculo; replay exige ADMIN do cliente correspondente."
+    }
+  ],
+  "scope": {
+    "included": [
+      "Mudanças de status posteriores à criação, configuração de endpoints HTTPS e filtros por status.",
+      "Histórico de entregas, gestão e rotação de secrets e replay administrativo auditado.",
+      "Outbox transacional, worker único, retentativas, DLQ persistente e recuperação após reinício.",
+      "Vínculos e autorização por cliente, incluindo as regras de provisionamento do ADR-004."
+    ],
+    "excluded": [
+      "Evento para o PENDING inicial.",
+      "Notificação por e-mail, dashboard visual e limpeza ou arquivamento automático.",
+      "Rate limiting de saída, múltiplos workers, ordenação global e circuit breaker.",
+      "Garantia de entrega eventual, exatamente uma vez ou latência inferior a 10 segundos em todas as condições."
+    ]
+  },
+  "detailed_flows": {
+    "main_flow": [
+      "Validar a transição e atualizar pedido, estoque quando necessário e histórico na transação existente.",
+      "Selecionar endpoints ativos do cliente interessados no novo status; sem interessados não há evento.",
+      "Gerar um UUID por mudança, serializar snapshot JSON UTF-8 sem itens e persistir evento e uma entrega por endpoint na mesma transação.",
+      "O worker consulta entregas elegíveis a cada 2 segundos, em lotes de até 100 e sequencialmente, ordenando por timestamp e identificador em caso de empate.",
+      "Resolver configuração atual e chave utilizável, verificar limite de 65.536 bytes, persistir reserva da tentativa, assinar os bytes do snapshot e enviar por HTTPS com timeout de 10 segundos.",
+      "Qualquer resposta 2xx conclui a entrega; persistir histórico da tentativa, payload, resposta completa e tempo de resposta.",
+      "Retentativa de qualquer entrega bloqueia eventos posteriores do mesmo pedido para todos os endpoints até sucesso, DLQ ou falha permanente correspondente."
+    ],
+    "alternative_flows": [
+      "Payload maior que 65.536 bytes: persistir snapshot integral e falha permanente na transação, sem envio ou truncamento; falha da persistência reverte a transação.",
+      "Endpoint desativado ou excluído: registrar falha permanente sem resposta HTTP e sem DLQ e liberar o bloqueio correspondente. Alterações posteriores do filtro não cancelam entregas elegíveis; mudanças de URL usam a configuração atual.",
+      "Não 2xx, timeout ou erro de rede: registrar tentativa e agendar esperas de 1 minuto, 5 minutos, 30 minutos, 2 horas e 12 horas; após seis reservas, persistir entrada de DLQ.",
+      "Ao reiniciar, retornar entregas interrompidas a pendente, preservando event_id e reservas consumidas; sem reservas restantes, encaminhar à DLQ. A reserva conta mesmo se a queda ocorreu antes do envio.",
+      "Replay exige ADMIN vinculado e auditoria; no máximo um replay ativo por entrada da DLQ, mesmo event_id e novo ciclo de até seis reservas. Nova exaustão gera outra entrada na DLQ; replay pode chegar fora da ordem original.",
+      "Cadastro devolve a secret e consome sua revelação única. Rotação gera novo kid e secret, que pode ser revelada uma vez em consulta autenticada. Se a resposta com a secret se perder, gerar outra secret com novo kid.",
+      "Na rotação, usar a chave anterior até confirmação de migração ou expiração da janela de 24 horas, o que ocorrer primeiro; depois usar a nova. A chave antiga expira ao fim da janela.",
+      "Cadastro e rotação só retornam sucesso após persistência no banco e no secret manager. Falha parcial exige erro e compensação ou reconciliação; se a compensação falhar, bloquear a chave afetada e exigir intervenção manual.",
+      "A integração proposta chama publishWebhookEvent(tx, order, fromStatus, toStatus) em src/modules/orders/order.service.ts; as mudanças de schema, rotas, autorização e inicialização seguem docs/FDD.md."
+    ]
+  },
+  "public_contracts": [
+    {
+      "name": "Cadastro de webhook",
+      "kind": "http_endpoint",
+      "signature_or_route": "/api/v1/customers/:customerId/webhooks",
+      "method": "POST",
+      "request_example": {
+        "url": "https://cliente.example/webhooks",
+        "statuses": ["SHIPPED", "DELIVERED"]
+      },
+      "response_example": {
+        "id": "wh-1",
+        "customerId": "customer-1",
+        "url": "https://cliente.example/webhooks",
+        "statuses": ["SHIPPED", "DELIVERED"],
+        "active": true,
+        "kid": "key-1",
+        "secret": "secret-exemplo"
+      },
+      "headers_semantics": ["Authorization: Bearer <JWT>; exige vínculo com o cliente.", "Content-Type: application/json."],
+      "status_semantics": ["201: criado, com revelação única da secret.", "400: validação inválida.", "401: autenticação inválida.", "403: sem vínculo."],
+      "limits": {"payload_size": "Limite para requisições administrativas ainda não definido."},
+      "versioning": "Prefixo /api/v1; campos e códigos são propostas."
+    },
+    {
+      "name": "Listagem de webhooks por cliente",
+      "kind": "http_endpoint",
+      "signature_or_route": "/api/v1/customers/:customerId/webhooks",
+      "method": "GET",
+      "response_example": {"webhooks": [{"id": "wh-1", "url": "https://cliente.example/webhooks", "statuses": ["SHIPPED"], "active": true}]},
+      "headers_semantics": ["Authorization: Bearer <JWT>; exige vínculo com o cliente."],
+      "status_semantics": ["200: lista sem secrets.", "401: autenticação inválida.", "403: sem vínculo."],
+      "versioning": "Prefixo /api/v1; paginação ainda não definida."
+    },
+    {
+      "name": "Edição de webhook",
+      "kind": "http_endpoint",
+      "signature_or_route": "/api/v1/webhooks/:id",
+      "method": "PATCH",
+      "request_example": {"url": "https://cliente.example/novo", "statuses": ["DELIVERED"], "active": true},
+      "response_example": {"id": "wh-1", "url": "https://cliente.example/novo", "statuses": ["DELIVERED"], "active": true},
+      "headers_semantics": ["Authorization: Bearer <JWT>; exige vínculo com o cliente.", "Content-Type: application/json."],
+      "status_semantics": ["200: configuração atualizada sem secret.", "400: validação inválida.", "404: recurso inexistente."],
+      "versioning": "Prefixo /api/v1; campos parciais são propostas."
+    },
+    {
+      "name": "Remoção de webhook",
+      "kind": "http_endpoint",
+      "signature_or_route": "/api/v1/webhooks/:id",
+      "method": "DELETE",
+      "headers_semantics": ["Authorization: Bearer <JWT>; exige vínculo com o cliente."],
+      "status_semantics": ["204: removido, sem corpo.", "404: recurso inexistente."],
+      "versioning": "Prefixo /api/v1."
+    },
+    {
+      "name": "Histórico de entregas",
+      "kind": "http_endpoint",
+      "signature_or_route": "/api/v1/webhooks/:id/deliveries",
+      "method": "GET",
+      "response_example": {"deliveries": [{"eventId": "event-1", "outcome": "success", "payload": {"event_id": "event-1"}, "responseStatus": 200, "responseBody": "ok", "durationMs": 120}]},
+      "headers_semantics": ["Authorization: Bearer <JWT>; exige vínculo com o cliente."],
+      "status_semantics": ["200: até 100 registros mais recentes, sem paginação; falhas sem envio podem não ter resposta HTTP ou duração."],
+      "limits": {"payload_size": "Resposta externa armazenada integralmente, sem limite adicional."},
+      "versioning": "Prefixo /api/v1; formato proposto."
+    },
+    {
+      "name": "Rotação de secret",
+      "kind": "http_endpoint",
+      "signature_or_route": "/api/v1/webhooks/:id/rotate-secret",
+      "method": "POST",
+      "response_example": {"kid": "key-2", "previousKeyExpiresAt": "2026-11-04T12:00:00Z"},
+      "headers_semantics": ["Authorization: Bearer <JWT>; exige vínculo com o cliente."],
+      "status_semantics": ["200: nova chave persistida em ambos os sistemas, sem revelar secret.", "Falha de persistência não retorna sucesso."],
+      "versioning": "Prefixo /api/v1; formato e status propostos."
+    },
+    {
+      "name": "Consulta de identificadores de chave",
+      "kind": "http_endpoint",
+      "signature_or_route": "/api/v1/webhooks/:id/keys",
+      "method": "GET",
+      "response_example": {"keys": [{"kid": "key-2", "state": "pending_confirmation"}]},
+      "headers_semantics": ["Authorization: Bearer <JWT>; exige vínculo com o cliente."],
+      "status_semantics": ["200: identificadores e metadados, nunca secrets."],
+      "versioning": "Prefixo /api/v1; formato proposto."
+    },
+    {
+      "name": "Revelação única de secret",
+      "kind": "http_endpoint",
+      "signature_or_route": "/api/v1/webhooks/:id/keys/:kid/secret",
+      "method": "GET",
+      "response_example": {"kid": "key-2", "secret": "nova-secret-exemplo"},
+      "headers_semantics": ["Authorization: Bearer <JWT>; exige vínculo com o cliente."],
+      "status_semantics": ["200: revela secret ainda não revelada uma única vez.", "403 SIGNATURE_KEY_EXPIRED: chave expirada.", "Tratamento específico de secret já revelada permanece a definir; nunca revelá-la novamente."],
+      "versioning": "Prefixo /api/v1; formato proposto."
+    },
+    {
+      "name": "Confirmação de migração de chave",
+      "kind": "http_endpoint",
+      "signature_or_route": "/api/v1/webhooks/:id/keys/:kid/confirm",
+      "method": "POST",
+      "response_example": {"kid": "key-2", "confirmed": true},
+      "headers_semantics": ["Authorization: Bearer <JWT>; exige vínculo com o cliente."],
+      "status_semantics": ["200: migração confirmada e nova chave usada nos envios; chave anterior continua válida até expirar."],
+      "versioning": "Prefixo /api/v1; formato e status propostos."
+    },
+    {
+      "name": "Replay da DLQ",
+      "kind": "http_endpoint",
+      "signature_or_route": "/api/v1/admin/webhooks/dead-letter/:id/replay",
+      "method": "POST",
+      "response_example": {"deadLetterId": "dlq-1", "eventId": "event-1", "status": "pending"},
+      "headers_semantics": ["Authorization: Bearer <JWT>; exige ADMIN do cliente e auditoria."],
+      "status_semantics": ["202: replay aceito.", "Repetição com replay ativo não cria outro ciclo; status e corpo dessa repetição ainda não definidos."],
+      "versioning": "Prefixo /api/v1; rota e resposta propostas."
+    },
+    {
+      "name": "Notificação ao destinatário",
+      "kind": "http_endpoint",
+      "signature_or_route": "URL HTTPS configurada pelo cliente",
+      "method": "POST",
+      "request_example": {
+        "event_id": "11111111-1111-4111-8111-111111111111",
+        "event_type": "order.status_changed",
+        "timestamp": "2026-11-03T12:00:00Z",
+        "order_id": "order-1",
+        "order_number": "1001",
+        "from_status": "PROCESSING",
+        "to_status": "SHIPPED",
+        "customer_id": "customer-1",
+        "total_cents": 12000
+      },
+      "headers_semantics": [
+        "Content-Type: application/json.",
+        "X-Event-Id: UUID estável por mudança; destinatário deduplica pelo identificador.",
+        "X-Webhook-Id: identifica o cadastro; X-Key-Id: identifica a chave usada.",
+        "X-Signature: HMAC-SHA256 hexadecimal sobre os bytes exatos do corpo ou, com proteção habilitada, sobre os bytes UTF-8 de X-Timestamp, um ponto e os bytes exatos do corpo.",
+        "X-Timestamp: segundos Unix do envio; quando a proteção estiver habilitada, é obrigatório e a tolerância é de 30 segundos. O modo e seu padrão permanecem a definir."
+      ],
+      "status_semantics": ["Qualquer 2xx: sucesso.", "Outros status, timeout ou erro de rede: retentativa e eventual DLQ.", "Redirecionamentos HTTPS permitidos; redirecionamento para HTTP bloqueado."],
+      "limits": {"payload_size": "65.536 bytes para o corpo serializado.", "timeout": "10 segundos."},
+      "versioning": "event_type order.status_changed; formato de exemplo proposto."
+    }
+  ],
+  "errors_exceptions_fallback": {
+    "error_matrix": [
+      {"condition": "Validação, autenticação ou vínculo inválido.", "treatment": "Rejeitar com envelope de erro existente sem alterar recursos.", "notes": "Preservar UNAUTHORIZED, FORBIDDEN e VALIDATION_ERROR; códigos específicos usam WEBHOOK_*, exceto SIGNATURE_KEY_EXPIRED."},
+      {"condition": "Falha de persistência de evento ou de falha por tamanho na transação do pedido.", "treatment": "Reverter status, estoque e histórico."},
+      {"condition": "Snapshot maior que 65.536 bytes.", "treatment": "Persistir snapshot completo e falha permanente; não enviar nem truncar."},
+      {"condition": "Endpoint desativado ou excluído.", "treatment": "Registrar falha permanente sem HTTP e sem DLQ; liberar bloqueio."},
+      {"condition": "Resposta não 2xx, timeout ou erro de rede.", "treatment": "Registrar tentativa, aguardar intervalo correspondente e encaminhar à DLQ quando esgotadas as reservas."},
+      {"condition": "Worker interrompido.", "treatment": "Recuperar estado pendente e preservar identidade e reservas; encaminhar à DLQ se esgotadas.", "notes": "O destinatário pode ter recebido uma chamada cuja confirmação não foi persistida."},
+      {"condition": "Falha parcial entre banco e secret manager.", "treatment": "Retornar erro, compensar ou reconciliar; bloquear chave e exigir intervenção manual se não for possível compensar."},
+      {"condition": "Replay já ativo para a entrada da DLQ.", "treatment": "Não criar segundo ciclo; resposta específica ainda não definida."}
+    ],
+    "resilience_strategies": [
+      "Timeout HTTP de 10 segundos.",
+      "Até cinco retries com esperas de 1 minuto, 5 minutos, 30 minutos, 2 horas e 12 horas.",
+      "Sem circuit breaker; timeout e retries do secret manager ainda não definidos."
+    ],
+    "fallback_policy": "DLQ após esgotar reservas e replay manual auditado; não há envio alternativo nem e-mail.",
+    "invariants": [
+      "Máximo de seis reservas por ciclo; uma reserva pode não resultar em chamada.",
+      "Preservar event_id em entregas, retries e replays.",
+      "Não enviar snapshot acima do limite nem revelar secret mais de uma vez.",
+      "Não usar chave com persistência inconsistente."
+    ]
+  },
+  "observability": {
+    "metrics": [
+      "Não implementadas nesta fase; instrumentação e metas para backlog, idade do evento, latência, tentativas, falhas, DLQ e replay permanecem pendentes."
+    ],
+    "logs": {
+      "format": "Pino estruturado; expandir redação para campos sensíveis de webhook. Não registrar secrets, tokens, payloads ou respostas externas.",
+      "fields": ["evento operacional", "timestamp", "event_id", "webhook_id", "order_id", "identificador do cliente", "número da reserva", "resultado", "status HTTP quando disponível", "duração", "usuário responsável e ID da DLQ em replay"]
+    },
+    "tracing": {
+      "spans": ["Não implementados nesta fase; spans de publicação, reserva, envio e replay e sua propagação permanecem pendentes."],
+      "sampling": "Pendente de definição."
+    },
+    "dashboards_alerts": [
+      "Dashboard e alertas automáticos não são implementados nesta fase; monitoramento operacional por logs requer definição posterior."
+    ]
+  },
+  "dependencies_compatibility": {
+    "dependencies": [
+      {"component": "Node.js", "min_version": "20", "notes": "API e worker em processos separados."},
+      {"component": "Express", "notes": "Projeto usa 4.21.1; versão mínima não definida."},
+      {"component": "Prisma", "notes": "Projeto usa 5.22.0; versão mínima não definida; worker usa cliente próprio."},
+      {"component": "MySQL", "notes": "Compose usa MySQL 8; versão mínima não definida; exige migração."},
+      {"component": "Zod e Pino", "notes": "Projeto usa Zod 3.23.8 e Pino 9.5.0; versões mínimas não definidas."},
+      {"component": "Secret manager", "notes": "Provedor, SDK, versão, timeout e política de acesso ainda não definidos."}
+    ],
+    "compatibility_guarantees": [
+      "Contratos existentes de pedido permanecem, mas falha de persistência dos registros elegíveis reverte a mudança de status.",
+      "Autorização por vínculo e restrições de registro e cadastro de clientes alteram comportamentos existentes e exigem migração de usuários, vínculos e consumidores.",
+      "JWT e requireRole global atuais, isoladamente, não cumprem autorização por cliente.",
+      "Destinatários devem validar assinatura e tolerar duplicatas e replay fora de ordem."
+    ]
+  },
+  "acceptance_criteria": [
+    "Uma mudança com múltiplos endpoints elegíveis registra o mesmo event_id e entregas independentes; sem interessados não há evento; PENDING inicial não publica.",
+    "Falha de persistência reverte status, estoque e histórico; snapshot de 65.536 bytes pode ser enviado e um de 65.537 bytes é persistido com falha permanente sem HTTP.",
+    "Worker consulta a cada 2 segundos, processa no máximo 100 entregas por lote sequencialmente e usa timeout de 10 segundos.",
+    "Qualquer 2xx conclui a entrega; falhas seguem as cinco esperas e até seis reservas. Queda após reserva consome tentativa; reinício preserva event_id e encaminha à DLQ se o ciclo estiver esgotado.",
+    "Retry bloqueia eventos posteriores do mesmo pedido em todos os endpoints; sucesso, DLQ ou falha permanente liberam o bloqueio correspondente. Empates não garantem ordem real.",
+    "Desativação ou exclusão gera falha permanente sem DLQ nem resposta HTTP; filtro alterado não cancela entregas elegíveis e URL alterada usa a configuração atual.",
+    "Replay exige ADMIN vinculado e auditoria, impede mais de um replay ativo por entrada e preserva identidade e histórico; nova exaustão cria nova entrada DLQ.",
+    "CRUD, histórico e secrets negam acesso sem vínculo. Histórico retorna até 100 registros recentes e armazena resposta externa completa.",
+    "HMAC é verificável em ambos os modos; rotação usa a chave anterior até confirmação ou 24 horas. Cadastro e cada kid revelam secret uma única vez; chave inconsistente não é usada.",
+    "Pino registra operação e auditoria sem secrets, tokens, payloads ou respostas externas; métricas, tracing e alertas automáticos não são declarados implementados."
+  ],
+  "risks": [
+    {
+      "risk": "Crescimento do banco e exposição de dados no histórico.",
+      "probability": "high",
+      "impact": "Payloads e respostas completas sem limite adicional ou retenção automática podem consumir armazenamento e conter dados sensíveis.",
+      "mitigation": ["Restringir consultas ao cliente associado e não registrar corpos ou secrets nos logs.", "Acompanhar capacidade do banco e definir retenção posteriormente."],
+      "contingency_plan": "Intervenção operacional para capacidade e tratamento de dados, sem presumir limpeza automática."
+    },
+    {
+      "risk": "Acesso a destinos internos e redirecionamentos.",
+      "probability": "medium",
+      "impact": "Hipótese para revisão: SSRF ou vazamento porque qualquer HTTPS, inclusive interno, e redirecionamentos HTTPS são permitidos.",
+      "mitigation": ["Exigir HTTPS e bloquear redirecionamento para HTTP.", "Realizar revisão de segurança antes do deploy; não há bloqueio de rede interna nesta fase."],
+      "contingency_plan": "Desativar o endpoint afetado e investigar; restrições adicionais exigem decisão posterior."
+    },
+    {
+      "risk": "Backlog, duplicatas e ordenação.",
+      "probability": "medium",
+      "impact": "Hipótese para revisão: worker único e bloqueio por retry podem atrasar eventos; recuperação e replay podem gerar duplicatas ou chegada fora de ordem.",
+      "mitigation": ["Persistir reservas, histórico e DLQ e documentar deduplicação por event_id.", "Acompanhar processamento e auditar replay administrativo."],
+      "contingency_plan": "Corrigir a causa da falha e executar replay manual autorizado; estratégia multiworker fica para revisão futura."
+    },
+    {
+      "risk": "Inconsistência de chave entre banco e secret manager.",
+      "probability": "medium",
+      "impact": "Hipótese para revisão: falha parcial pode impedir assinatura ou deixar uma chave inconsistente.",
+      "mitigation": ["Confirmar sucesso somente após persistência em ambos e compensar ou reconciliar falhas.", "Bloquear chave afetada se a compensação falhar, sem registrar secrets."],
+      "contingency_plan": "Intervenção manual para reconciliar e, se necessário, gerar novo kid e secret."
+    }
+  ]
+}
