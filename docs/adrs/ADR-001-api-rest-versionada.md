@@ -4,7 +4,7 @@
 **Data:** Desconhecida
 **Related to:**
 - [ADR-002: Express como framework HTTP](ADR-002-express-framework-http.md)
-- [ADR-004: Autenticação JWT e autorização por papéis](../CROSS/ADR-004-autenticacao-jwt-e-papeis.md)
+- [ADR-004: Autenticação JWT e autorização por papéis](ADR-004-autenticacao-jwt-e-papeis.md)
 
 ## Contexto e problema
 
@@ -50,8 +50,8 @@ A autenticação das chamadas de entrada e a entrega de notificações de saída
 
 ## Referências
 
-- [Composição da aplicação](../../../../src/app.ts)
-- [Rotas de domínio](../../../../src/routes/index.ts)
-- [Rotas de clientes](../../../../src/modules/customers/customer.routes.ts)
-- [Transcrição: CRUD e replay propostos](../../../../TRANSCRICAO.md#L184-L216)
+- [Composição da aplicação](../../src/app.ts)
+- [Rotas de domínio](../../src/routes/index.ts)
+- [Rotas de clientes](../../src/modules/customers/customer.routes.ts)
+- [Transcrição: CRUD e replay propostos](../../TRANSCRICAO.md#L184-L216)
 - Esclarecimentos fornecidos pelo usuário em 02-11-2026: motivações, ausência de registro das alternativas e ausência de política de versões.

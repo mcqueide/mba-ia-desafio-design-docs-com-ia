@@ -295,6 +295,8 @@ Itere bastante. Os primeiros documentos que a IA gerar provavelmente serão supe
 
 ## Entrega do desafio
 
+### Sobre o desafio
+
 Esse desafio teve objetivo de avaliar a capacidade do aluno de colocar em prático o conteúdo aprendido nesse módulo produzindo documentação técnica acionável a partir de uma transcrição de reunião e do código existente, usando IA como ferramenta principal.
 
 ### Ferramentas de IA utilizadas
@@ -370,7 +372,9 @@ Caso a cobertura mínima não seja alcançada, informe os itens não cobertos um
 
 ### Iterações e ajustes
 
-Tive que fazer algumas iterações, nas primeiras tentativas, tentei utilizar os prompts disponíveis no curso, mas percebi que eles não estava levando em consideração a transcrição da reunião, então precisei modificar os prompts para cada documento.
+Na primeira iteração, tentei utilizar os prompts disponíveis no curso, mas percebi que eles não estava levando em consideração a transcrição da reunião, então precisei modificar os prompts para cada documento. Então tive que fazer uma segunda iteração, onde ajustei os prompts para que a IA considerasse a transcrição da reunião e o código existente.
+
+Quando estava fiz uma última revisão, percebi que ainda não estava obedecendo a estrutura de pastas e que o PRD, FDD e ADRs não estavam cumprindo os requisitos mínimos, então tive que fazer uma terceira iteração, para cobrir os requisitos que ficaram faltando e corrigir um a um.
 
 ### Como navegar a entrega
 

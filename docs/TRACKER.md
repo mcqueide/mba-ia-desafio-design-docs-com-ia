@@ -59,6 +59,8 @@
 | FDD-CTR-04 | docs/FDD.md | Contrato | Replay é exposto por endpoint administrativo. | TRANSCRICAO | [09:18] Diego |
 | FDD-CTR-05 | docs/FDD.md | Contrato | Payload contém identificador, status anterior e novo, pedido, cliente e total, sem itens. | TRANSCRICAO | [09:43] Diego |
 | FDD-CTR-06 | docs/FDD.md | Contrato | Webhook usa POST JSON, headers de identificação e assinatura HMAC. | TRANSCRICAO | [09:44] Diego |
+| FDD-ERR-01 | docs/FDD.md | Restrição | Códigos específicos de webhooks usam o prefixo `WEBHOOK_*`, incluindo `WEBHOOK_NOT_FOUND`, `WEBHOOK_INVALID_URL` e `WEBHOOK_SECRET_REQUIRED`. | TRANSCRICAO | [09:28] Bruno |
+| FDD-ERR-02 | docs/FDD.md | Decisão | Todos os códigos de erro do módulo de webhooks devem usar o prefixo `WEBHOOK_`. | TRANSCRICAO | [09:29] Larissa |
 | FDD-OBS-01 | docs/FDD.md | Observabilidade | O projeto usa Pino como logger compartilhado. | TRANSCRICAO | [09:29] Bruno |
 | FDD-COMP-01 | docs/FDD.md | Compatibilidade | Mudança de status já usa Prisma em transação e requer evolução sem quebrar a operação atual. | CODIGO | src/modules/orders/order.service.ts |
 | ADR-001 | docs/adrs/generated/API/ADR-001-api-rest-versionada.md | Decisão | API existente expõe recursos HTTP JSON com versão no caminho. | CODIGO | src/routes/index.ts |

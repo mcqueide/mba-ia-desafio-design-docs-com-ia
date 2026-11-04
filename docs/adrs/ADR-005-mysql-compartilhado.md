@@ -3,7 +3,7 @@
 **Status:** Proposto
 **Data:** Desconhecida
 **Related to:**
-- [ADR-007: Webhooks assíncronos para mudanças de status](../ORDERS/ADR-007-webhooks-assincronos-de-status.md)
+- [ADR-007: Webhooks assíncronos para mudanças de status](ADR-007-webhooks-assincronos-de-status.md)
 - [ADR-006: Prisma como camada de acesso a dados](ADR-006-prisma-acesso-a-dados.md)
 
 ## Contexto e problema
@@ -52,8 +52,8 @@ A outbox continua sendo proposta: sua capacidade, retenção e comportamento de 
 
 ## Referências
 
-- [Schema Prisma](../../../../prisma/schema.prisma)
-- [Migração inicial](../../../../prisma/migrations/20260519182739_init/migration.sql)
-- [Docker Compose](../../../../docker-compose.yml)
-- [Transcrição: outbox e Redis](../../../../TRANSCRICAO.md#L30-L58)
+- [Schema Prisma](../../prisma/schema.prisma)
+- [Migração inicial](../../prisma/migrations/20260519182739_init/migration.sql)
+- [Docker Compose](../../docker-compose.yml)
+- [Transcrição: outbox e Redis](../../TRANSCRICAO.md#L30-L58)
 - Esclarecimentos fornecidos pelo usuário em 02-11-2026: motivação original desconhecida, alternativas sem registro e operação por ambiente sem informação disponível.

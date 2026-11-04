@@ -3,9 +3,9 @@
 **Status:** Proposto
 **Data:** Desconhecida
 **Related to:**
-- [ADR-003: Autenticação de webhooks por HMAC](../CROSS/ADR-003-assinatura-hmac-de-webhooks.md)
-- [ADR-004: Autenticação JWT e autorização por papéis](../CROSS/ADR-004-autenticacao-jwt-e-papeis.md)
-- [ADR-005: MySQL como banco relacional compartilhado](../DATA/ADR-005-mysql-compartilhado.md)
+- [ADR-003: Autenticação de webhooks por HMAC](ADR-003-assinatura-hmac-de-webhooks.md)
+- [ADR-004: Autenticação JWT e autorização por papéis](ADR-004-autenticacao-jwt-e-papeis.md)
+- [ADR-005: MySQL como banco relacional compartilhado](ADR-005-mysql-compartilhado.md)
 
 ## Contexto e problema
 
@@ -64,8 +64,8 @@ Como eventos posteriores podem seguir após a transferência para a DLQ, um repl
 
 ## Referências
 
-- [Transcrição: outbox, alternativas e worker](../../../../TRANSCRICAO.md#L30-L86)
-- [Transcrição: retentativas, DLQ e deduplicação](../../../../TRANSCRICAO.md#L88-L158)
-- [Transcrição: integração e snapshot](../../../../TRANSCRICAO.md#L238-L244)
-- [Serviço de pedidos](../../../../src/modules/orders/order.service.ts#L126-L178)
+- [Transcrição: outbox, alternativas e worker](../../TRANSCRICAO.md#L30-L86)
+- [Transcrição: retentativas, DLQ e deduplicação](../../TRANSCRICAO.md#L88-L158)
+- [Transcrição: integração e snapshot](../../TRANSCRICAO.md#L238-L244)
+- [Serviço de pedidos](../../src/modules/orders/order.service.ts#L126-L178)
 - Esclarecimentos fornecidos pelo usuário em 02-11-2026: contagem de tentativas, ordenação, recuperação e replay.

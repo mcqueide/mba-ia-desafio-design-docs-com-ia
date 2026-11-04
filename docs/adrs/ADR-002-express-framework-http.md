@@ -46,8 +46,8 @@ A escolha afeta a composição da API e seus componentes HTTP. Ela é distinta d
 
 ## Referências
 
-- [Dependências e scripts](../../../../package.json)
-- [Composição da aplicação](../../../../src/app.ts)
-- [Inicialização HTTP](../../../../src/server.ts)
-- [Rotas de domínio](../../../../src/routes/index.ts)
+- [Dependências e scripts](../../package.json)
+- [Composição da aplicação](../../src/app.ts)
+- [Inicialização HTTP](../../src/server.ts)
+- [Rotas de domínio](../../src/routes/index.ts)
 - Esclarecimentos fornecidos pelo usuário em 02-11-2026: motivação, ausência de registro das alternativas e ausência de decisão sobre manutenção.

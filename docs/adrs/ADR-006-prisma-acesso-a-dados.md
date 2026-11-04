@@ -49,8 +49,8 @@ A reunião prevê um cliente por processo para o worker; isso não demonstra com
 
 ## Referências
 
-- [Configuração do banco](../../../../src/config/database.ts)
-- [Schema Prisma](../../../../prisma/schema.prisma)
-- [Serviço de pedidos](../../../../src/modules/orders/order.service.ts#L126-L178)
-- [Transcrição: processo e transação](../../../../TRANSCRICAO.md#L238-L244)
+- [Configuração do banco](../../src/config/database.ts)
+- [Schema Prisma](../../prisma/schema.prisma)
+- [Serviço de pedidos](../../src/modules/orders/order.service.ts#L126-L178)
+- [Transcrição: processo e transação](../../TRANSCRICAO.md#L238-L244)
 - Esclarecimentos fornecidos pelo usuário em 02-11-2026: motivação, TypeORM e acesso transacional direto.

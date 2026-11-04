@@ -8,7 +8,7 @@ Responsável: Larissa, Tech Lead
 
 ### 1. Contexto e motivação técnica
 
-Clientes B2B consultam pedidos repetidamente para descobrir mudanças de status. A feature propõe notificações HTTP assíncronas com snapshot do pedido, desacopladas da disponibilidade do destinatário. A [RFC-001](RFC.md) e os ADRs [003](adrs/generated/CROSS/ADR-003-assinatura-hmac-de-webhooks.md), [004](adrs/generated/CROSS/ADR-004-autenticacao-jwt-e-papeis.md) e [007](adrs/generated/ORDERS/ADR-007-webhooks-assincronos-de-status.md) permanecem propostos e devem ser revisados junto com este documento.
+Clientes B2B consultam pedidos repetidamente para descobrir mudanças de status. A feature propõe notificações HTTP assíncronas com snapshot do pedido, desacopladas da disponibilidade do destinatário. A [RFC-001](RFC.md) e os ADRs [003](adrs/ADR-003-assinatura-hmac-de-webhooks.md), [004](adrs/ADR-004-autenticacao-jwt-e-papeis.md) e [007](adrs/ADR-007-webhooks-assincronos-de-status.md) permanecem propostos e devem ser revisados junto com este documento.
 
 Os atores são usuários autenticados vinculados a um cliente, administradores desse cliente, o worker e os sistemas destinatários. A API e o worker compartilham MySQL, mas executam em processos separados. A atomicidade cobre a mudança de status e o registro de eventos elegíveis, não a recepção HTTP.
 
@@ -255,16 +255,21 @@ HTTP/1.1 204 No Content
 
 ### 6. Erros, exceções e fallback
 
-| Condição | Tratamento |
-| --- | --- |
-| Validação, autenticação ou vínculo inválido | Rejeitar requisição com envelope de erro existente; não alterar recursos. |
-| Falha ao persistir evento ou falha por tamanho na transação do pedido | Reverter toda a transação. |
-| Payload acima de 65.536 bytes | Persistir snapshot e falha permanente; não enviar, não truncar. |
-| Endpoint desativado ou excluído | Registrar falha permanente sem HTTP e sem DLQ; liberar bloqueio. |
-| Não 2xx, timeout ou erro de rede | Registrar tentativa e aplicar esperas; ao esgotar reservas, enviar à DLQ. |
-| Worker interrompido | Recuperar estado pendente, manter identidade e reservas; não supor que o destinatário deixou de receber. |
-| Falha parcial entre banco e secret manager | Retornar erro, compensar ou reconciliar; se não for possível compensar, bloquear a chave e exigir intervenção manual. |
-| Replay já ativo | Não criar ciclo adicional; resposta específica pendente de definição. |
+Os nomes abaixo são propostas de códigos específicos do módulo. Eles seguem o prefixo `WEBHOOK_*` definido na reunião; erros compartilhados de autenticação e autorização permanecem `UNAUTHORIZED` e `FORBIDDEN`.
+
+| Condição | Código | Tratamento |
+| --- | --- | --- |
+| URL inválida ou lista de status inválida | `WEBHOOK_INVALID_URL` ou `WEBHOOK_INVALID_STATUS_FILTER` | Rejeitar requisição com envelope de erro existente; não alterar recursos. |
+| Endpoint inexistente | `WEBHOOK_NOT_FOUND` | Retornar recurso não encontrado; não alterar recursos. |
+| Autenticação ou vínculo inválido | `UNAUTHORIZED` ou `FORBIDDEN` | Rejeitar requisição com envelope de erro existente; não alterar recursos. |
+| Falha ao persistir evento na transação do pedido | `WEBHOOK_EVENT_PERSISTENCE_FAILED` | Reverter toda a transação. |
+| Payload acima de 65.536 bytes | `WEBHOOK_PAYLOAD_TOO_LARGE` | Persistir snapshot e falha permanente; não enviar, não truncar. |
+| Endpoint desativado ou excluído | `WEBHOOK_INACTIVE` ou `WEBHOOK_NOT_FOUND` | Registrar falha permanente sem HTTP e sem DLQ; liberar bloqueio. |
+| Não 2xx, timeout ou erro de rede | `WEBHOOK_DELIVERY_FAILED` | Registrar tentativa e aplicar esperas; ao esgotar reservas, enviar à DLQ. |
+| Worker interrompido | `WEBHOOK_DELIVERY_INTERRUPTED` | Recuperar estado pendente, manter identidade e reservas; não supor que o destinatário deixou de receber. |
+| Falha parcial entre banco e secret manager | `WEBHOOK_SECRET_PERSISTENCE_FAILED` | Retornar erro, compensar ou reconciliar; se não for possível compensar, bloquear a chave e exigir intervenção manual. |
+| Secret obrigatória indisponível | `WEBHOOK_SECRET_REQUIRED` | Impedir criação, rotação ou envio até que uma secret utilizável esteja disponível. |
+| Replay já ativo | `WEBHOOK_REPLAY_ALREADY_ACTIVE` | Não criar ciclo adicional; resposta específica pendente de definição. |
 
 - Estratégias de resiliência: timeout HTTP de 10 segundos, até cinco retries com espera de 1 minuto, 5 minutos, 30 minutos, 2 horas e 12 horas; sem circuit breaker. O timeout do secret manager e suas políticas de retry permanecem a definir.
 - Política de fallback: DLQ após esgotar reservas e replay manual auditado; não há envio alternativo nem e-mail. Erros de persistência não são convertidos em sucesso.

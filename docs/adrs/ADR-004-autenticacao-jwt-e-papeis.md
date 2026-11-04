@@ -3,9 +3,9 @@
 **Status:** Proposto
 **Data:** Desconhecida
 **Related to:**
-- [ADR-007: Webhooks assíncronos para mudanças de status](../ORDERS/ADR-007-webhooks-assincronos-de-status.md)
+- [ADR-007: Webhooks assíncronos para mudanças de status](ADR-007-webhooks-assincronos-de-status.md)
 - [ADR-003: Autenticação de webhooks por HMAC](ADR-003-assinatura-hmac-de-webhooks.md)
-- [ADR-001: API HTTP orientada a recursos e versionada](../API/ADR-001-api-rest-versionada.md)
+- [ADR-001: API HTTP orientada a recursos e versionada](ADR-001-api-rest-versionada.md)
 
 ## Contexto e problema
 
@@ -57,8 +57,8 @@ O registro público existente aceita ADMIN e o cadastro atual de clientes exige 
 
 ## Referências
 
-- [Middleware de autenticação](../../../../src/middlewares/auth.middleware.ts)
-- [Serviço de autenticação](../../../../src/modules/auth/auth.service.ts)
-- [Rotas de autenticação](../../../../src/modules/auth/auth.routes.ts)
-- [Transcrição: autorização e replay](../../../../TRANSCRICAO.md#L184-L216)
+- [Middleware de autenticação](../../src/middlewares/auth.middleware.ts)
+- [Serviço de autenticação](../../src/modules/auth/auth.service.ts)
+- [Rotas de autenticação](../../src/modules/auth/auth.routes.ts)
+- [Transcrição: autorização e replay](../../TRANSCRICAO.md#L184-L216)
 - Esclarecimentos fornecidos pelo usuário em 02-11-2026: reutilização de JWT, papéis por vínculo, provisionamento inicial e auditoria.

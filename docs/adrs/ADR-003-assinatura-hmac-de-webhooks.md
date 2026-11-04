@@ -3,7 +3,7 @@
 **Status:** Proposto
 **Data:** Desconhecida
 **Related to:**
-- [ADR-007: Webhooks assíncronos para mudanças de status](../ORDERS/ADR-007-webhooks-assincronos-de-status.md)
+- [ADR-007: Webhooks assíncronos para mudanças de status](ADR-007-webhooks-assincronos-de-status.md)
 - [ADR-004: Autenticação JWT e autorização por papéis](ADR-004-autenticacao-jwt-e-papeis.md)
 
 ## Contexto e problema
@@ -54,7 +54,7 @@ O timestamp assinado limita a idade aceita das mensagens, mas não impede a repe
 
 ## Referências
 
-- [Transcrição: assinatura, rotação e HTTPS](../../../../TRANSCRICAO.md#L118-L138)
-- [Transcrição: headers e revisão de segurança](../../../../TRANSCRICAO.md#L260-L288)
-- [Logger compartilhado](../../../../src/shared/logger/index.ts#L4-L19)
+- [Transcrição: assinatura, rotação e HTTPS](../../TRANSCRICAO.md#L118-L138)
+- [Transcrição: headers e revisão de segurança](../../TRANSCRICAO.md#L260-L288)
+- [Logger compartilhado](../../src/shared/logger/index.ts#L4-L19)
 - Esclarecimentos fornecidos pelo usuário em 02-11-2026: contrato de assinatura, rotação, secret manager e proteção opcional por timestamp.
