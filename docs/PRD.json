@@ -1,0 +1,360 @@
+{
+  "meta": {
+    "product": "Sistema de Pedidos",
+    "feature": "Webhooks de mudanças de status de pedidos",
+    "prd_owner": "Larissa, Tech Lead",
+    "version": "1.0"
+  },
+  "context": {
+    "summary": "A feature disponibiliza webhooks de saída para que clientes B2B sejam notificados sobre mudanças de status de seus pedidos sem consultar periodicamente a API. Eventos serão registrados de forma atômica com a mudança de status e entregues de modo assíncrono, com assinatura HMAC, retentativas, DLQ e replay administrativo.",
+    "target_audience": [
+      "Usuários autenticados vinculados à Atlas Comercial, MaxDistribuição e Nova Cargo",
+      "Sistemas consumidores de pedidos desses clientes B2B"
+    ],
+    "key_use_cases": [
+      "Configurar um endpoint HTTPS e os status de pedido que deseja receber",
+      "Receber um evento quando um pedido do cliente muda para um status selecionado",
+      "Consultar falhas de entrega e solicitar replay de um evento na DLQ"
+    ],
+    "deployment_context": {
+      "type": "existing_system",
+      "description": "Sistema de Pedidos existente, composto por API Node.js com Express, Prisma e MySQL, acrescido de um worker Node.js executado em processo separado."
+    },
+    "problems": [
+      {
+        "description": "Clientes consultam repetidamente pedidos para detectar mudanças.",
+        "impact": "A integração é lenta e cara.",
+        "priority": "high"
+      },
+      {
+        "description": "A ausência de notificação em tempo próximo do real ameaça a retenção da Atlas Comercial.",
+        "impact": "O cliente sinalizou possível migração para um concorrente.",
+        "priority": "high"
+      }
+    ]
+  },
+  "goals": [
+    {
+      "goal": "Entregar notificações de mudança de status em condições favoráveis",
+      "metric": "Latência entre o registro do evento e a entrega HTTP bem-sucedida",
+      "target": "Menor que 10 segundos"
+    },
+    {
+      "goal": "Habilitar os clientes solicitantes a integrar webhooks",
+      "metric": "Quantidade de clientes solicitantes habilitados",
+      "target": "3 clientes"
+    }
+  ],
+  "scope": {
+    "in_scope": [
+      "CRUD autenticado de endpoints HTTPS por cliente, com filtros por status, histórico de entregas e gerenciamento de secrets",
+      "Registro transacional de eventos, worker único, retentativas, DLQ persistente, recuperação após reinício e replay administrativo auditado",
+      "Assinatura HMAC-SHA256, secret exclusiva por endpoint, rotação com janela de 24 horas e deduplicação do destinatário por X-Event-Id",
+      "Autorização por vínculo entre usuário e cliente e papel ADMIN para replay"
+    ],
+    "out_of_scope": [
+      "Evento para a criação inicial do pedido no status PENDING",
+      "Notificações por e-mail, dashboard visual, limpeza ou arquivamento automático de entregas",
+      "Rate limiting de saída, múltiplos workers, circuit breaker, garantia de entrega eventual, exatamente uma vez ou ordenação global",
+      "Assinatura que inclua timestamp e validação de idade da mensagem"
+    ]
+  },
+  "functional_requirements": [
+    {
+      "id": "FR-001",
+      "name": "Configurar endpoints de webhook",
+      "description": "Usuários vinculados ao cliente devem criar, listar, editar e remover endpoints HTTPS ativos e selecionar os status de pedido que desejam receber.",
+      "main_flow": [
+        "Usuário autenticado e vinculado ao cliente cadastra URL HTTPS e uma lista não vazia de status.",
+        "A plataforma gera uma secret exclusiva, persiste a configuração e a retorna somente na criação.",
+        "Usuário lista, atualiza URL, filtros ou estado ativo, ou remove o endpoint."
+      ],
+      "alternative_flows": [
+        "Alterar filtros não cancela entregas já elegíveis; a URL atualizada é usada para entregas pendentes.",
+        "Endpoint desativado ou removido antes do envio gera falha permanente sem chamada HTTP."
+      ],
+      "known_errors": [
+        "URL não HTTPS ou lista de status vazia retorna erro de validação.",
+        "Usuário sem autenticação ou sem vínculo com o cliente recebe erro de acesso.",
+        "Endpoint inexistente retorna erro de recurso não encontrado."
+      ],
+      "priority": "high"
+    },
+    {
+      "id": "FR-002",
+      "name": "Publicar evento na mudança de status",
+      "description": "O sistema deve registrar um snapshot do pedido e uma entrega por endpoint elegível na mesma transação da mudança de status.",
+      "main_flow": [
+        "O serviço valida a transição, atualiza pedido, histórico e estoque quando aplicável.",
+        "Seleciona endpoints ativos do cliente cujo filtro contém o novo status, exceto a criação inicial em PENDING.",
+        "Gera um event_id, persiste o snapshot sem itens e as entregas independentes por endpoint, e confirma a transação."
+      ],
+      "alternative_flows": [
+        "Sem endpoints elegíveis, a mudança de status é confirmada sem evento.",
+        "Snapshot acima de 65.536 bytes é persistido com falha permanente, sem envio e sem truncamento."
+      ],
+      "known_errors": [
+        "Falha ao persistir evento, entrega ou falha por tamanho reverte status, histórico e estoque.",
+        "Transição de status inválida permanece rejeitada pelas regras atuais do pedido."
+      ],
+      "priority": "high"
+    },
+    {
+      "id": "FR-003",
+      "name": "Entregar eventos de forma assíncrona",
+      "description": "Um worker separado deve enviar eventos pendentes aos endpoints públicos configurados, preservar o event_id e aplicar retentativas e DLQ.",
+      "main_flow": [
+        "A cada 2 segundos, o worker busca até 100 entregas elegíveis, processadas sequencialmente.",
+        "Para cada entrega, reserva uma tentativa, assina os bytes do payload com HMAC-SHA256 e envia uma requisição HTTP POST com timeout de 10 segundos.",
+        "Qualquer resposta 2xx conclui a entrega; falhas aplicam esperas de 1 minuto, 5 minutos, 30 minutos, 2 horas e 12 horas."
+      ],
+      "alternative_flows": [
+        "Após seis reservas por ciclo, o worker cria entrada persistente na DLQ com payload, motivo e horário.",
+        "Após queda do processo, o worker recupera entregas interrompidas sem alterar o event_id; uma reserva já consumida pode resultar em duplicata.",
+        "Enquanto uma entrega de um evento estiver em retentativa, eventos posteriores do mesmo pedido aguardam; replay pode chegar fora da ordem original."
+      ],
+      "known_errors": [
+        "Resposta não 2xx, timeout ou erro de rede registram a tentativa e agendam nova entrega.",
+        "Destino não público ou redirecionamento que não seja HTTPS para destino público é bloqueado e tratado como falha de entrega.",
+        "Payload acima do limite não é enviado."
+      ],
+      "priority": "high"
+    },
+    {
+      "id": "FR-004",
+      "name": "Consultar histórico de entregas",
+      "description": "Usuários vinculados ao cliente devem consultar o histórico das últimas 100 entregas de um endpoint.",
+      "main_flow": [
+        "Usuário autenticado solicita o histórico de um endpoint ao qual está vinculado.",
+        "A API retorna até 100 registros recentes com resultado, payload, resposta quando disponível e duração."
+      ],
+      "alternative_flows": [
+        "Falhas permanentes sem envio HTTP aparecem no histórico sem resposta ou duração."
+      ],
+      "known_errors": [
+        "Usuário sem vínculo recebe erro de acesso.",
+        "Endpoint inexistente retorna erro de recurso não encontrado."
+      ],
+      "priority": "medium"
+    },
+    {
+      "id": "FR-005",
+      "name": "Rotacionar e consultar secrets",
+      "description": "Usuários vinculados devem rotacionar a secret de um endpoint e consultar identificadores de chave sem expor secrets já reveladas.",
+      "main_flow": [
+        "Usuário solicita rotação e a plataforma cria uma nova secret e um novo kid.",
+        "A nova chave e seu metadado são persistidos no banco e no secret manager antes de confirmar sucesso.",
+        "A chave anterior permanece utilizável até a confirmação da migração ou por 24 horas; a secret nova pode ser revelada uma única vez."
+      ],
+      "alternative_flows": [
+        "Se a resposta que revelou a secret for perdida, uma nova rotação cria outro kid.",
+        "Após expiração, o kid continua consultável, mas a secret não pode ser revelada."
+      ],
+      "known_errors": [
+        "Falha parcial entre banco e secret manager exige compensação ou reconciliação; se não for possível, a chave é bloqueada.",
+        "Secret já revelada ou expirada não é revelada novamente."
+      ],
+      "priority": "high"
+    },
+    {
+      "id": "FR-006",
+      "name": "Reprocessar eventos da DLQ",
+      "description": "Administradores vinculados ao cliente devem solicitar replay de uma entrada da DLQ, preservando sua identidade e registrando auditoria.",
+      "main_flow": [
+        "ADMIN vinculado solicita replay de uma entrada da DLQ.",
+        "O sistema registra usuário, webhook e horário da ação e cria um novo ciclo de até seis reservas com o mesmo event_id.",
+        "O worker processa o replay como entrega pendente."
+      ],
+      "alternative_flows": [
+        "Apenas um replay pode permanecer ativo por entrada da DLQ.",
+        "Nova exaustão cria nova entrada na DLQ e preserva o histórico anterior."
+      ],
+      "known_errors": [
+        "Usuário sem papel ADMIN ou sem vínculo recebe erro de acesso.",
+        "Solicitação para replay já ativo não cria ciclo duplicado."
+      ],
+      "priority": "medium"
+    }
+  ],
+  "non_functional_requirements": [
+    {
+      "category": "performance",
+      "specifications": [
+        "O worker consulta entregas a cada 2 segundos, em lotes de até 100 registros sequenciais.",
+        "Em condições favoráveis, a latência de entrega deve ser menor que 10 segundos; não há garantia sob backlog, timeout ou falhas.",
+        "Cada chamada HTTP deve expirar após 10 segundos e o corpo de envio não pode exceder 65.536 bytes."
+      ]
+    },
+    {
+      "category": "availability",
+      "specifications": [
+        "A feature deve ter disponibilidade mensal de 99,9% em produção."
+      ]
+    },
+    {
+      "category": "security",
+      "specifications": [
+        "Autenticação é obrigatória para gerenciamento e histórico; autorização exige vínculo com o cliente do recurso.",
+        "Replay exige papel ADMIN vinculado ao cliente e auditoria persistida.",
+        "Cada endpoint usa secret exclusiva em secret manager e HMAC-SHA256 sobre os bytes do payload.",
+        "Aceitar apenas destinos públicos HTTPS e redirecionamentos HTTPS para destinos públicos."
+      ]
+    },
+    {
+      "category": "observability",
+      "specifications": [
+        "Logs Pino estruturados devem registrar event_id, webhook_id, pedido, cliente, reserva, resultado, status HTTP e duração.",
+        "Logs não podem conter secrets, tokens, payloads ou respostas externas.",
+        "Métricas, tracing, dashboard e alertas automáticos não fazem parte desta fase."
+      ]
+    },
+    {
+      "category": "reliability",
+      "specifications": [
+        "Mudança de status, histórico, estoque aplicável e persistência de eventos elegíveis devem ocorrer na mesma transação.",
+        "A entrega é at-least-once; destinatários devem deduplicar pelo X-Event-Id.",
+        "O worker deve persistir reservas e retomar entregas após reinício sem alterar o event_id."
+      ]
+    },
+    {
+      "category": "compatibility",
+      "specifications": [
+        "APIs administrativas usam REST JSON versionado em /api/v1 e JWT já existente.",
+        "API e worker executam em processos Node.js 20 separados, usam Prisma e compartilham a mesma DATABASE_URL MySQL."
+      ]
+    },
+    {
+      "category": "compliance",
+      "specifications": [
+        "Histórico de entrega e auditoria de replay devem permanecer acessíveis somente a usuários vinculados ao cliente.",
+        "Payloads e respostas persistidos exigem controle de acesso por poderem conter dados sensíveis."
+      ]
+    },
+    {
+      "category": "accessibility",
+      "specifications": [
+        "Não há frontend consumidor incluído nesta fase; a feature expõe somente APIs REST para integração."
+      ]
+    }
+  ],
+  "architecture": {
+    "approach": "Outbox transacional no MySQL: o serviço de pedidos registra eventos e entregas na mesma transação da mudança de status, enquanto um worker único em processo separado faz o envio assíncrono.",
+    "components": [
+      "Módulo src/modules/webhooks com controller, service, repository, routes e schemas Zod",
+      "Serviço de pedidos integrado por publishWebhookEvent(tx, order, fromStatus, toStatus)",
+      "Worker src/worker.ts com PrismaClient próprio, polling e processador de entregas",
+      "MySQL como fonte de verdade para configurações, outbox, entregas, tentativas, DLQ, chaves e auditoria",
+      "Secret manager com provedor ainda a ser definido pela plataforma"
+    ],
+    "integrations": [
+      "Endpoints HTTPS públicos configurados pelos clientes recebem notificações HTTP POST assinadas",
+      "Secret manager armazena secrets HMAC por endpoint",
+      "Middleware de autenticação evolui para validar vínculo e papel por cliente"
+    ]
+  },
+  "decisions_tradeoffs": [
+    {
+      "decision": "Usar outbox transacional no MySQL",
+      "justification": "Garante que o evento elegível seja registrado junto com a mudança de status, sem introduzir nova infraestrutura de mensageria.",
+      "trade_off": "Aumenta a carga e o modelo de dados do MySQL; falha na persistência impede a mudança de status."
+    },
+    {
+      "decision": "Executar worker único com polling de 2 segundos",
+      "justification": "Desacopla a disponibilidade do destinatário da API e atende à meta de experiência em condições favoráveis.",
+      "trade_off": "Backlog e retentativas podem atrasar entregas; não há escala horizontal nesta fase."
+    },
+    {
+      "decision": "Entrega at-least-once com DLQ e replay manual",
+      "justification": "Oferece recuperação de falhas sem a complexidade de coordenação necessária para exatamente uma vez.",
+      "trade_off": "Destinatários devem deduplicar por X-Event-Id, e replay pode ser recebido fora da ordem."
+    },
+    {
+      "decision": "Assinar somente o payload com HMAC-SHA256",
+      "justification": "Permite validar autenticidade e integridade com uma integração simples para os clientes.",
+      "trade_off": "Não limita a idade da mensagem; a deduplicação por event_id continua obrigatória."
+    }
+  ],
+  "dependencies": [
+    {
+      "type": "technical",
+      "title": "Secret manager",
+      "description": "A área de Plataforma precisa definir e disponibilizar o provedor, SDK, políticas de acesso e operação do secret manager para persistência das secrets HMAC."
+    },
+    {
+      "type": "technical",
+      "title": "Migração de identidade e autorização",
+      "description": "O time responsável pela API precisa criar vínculos usuário-cliente e papéis por cliente, migrar usuários existentes e restringir o registro público de ADMIN antes da ativação."
+    },
+    {
+      "type": "organizational",
+      "title": "Revisão de segurança",
+      "description": "A equipe de Segurança precisa revisar HMAC, geração e rotação de secrets e as proteções para destinos públicos antes do deploy."
+    }
+  ],
+  "risks": [
+    {
+      "risk": "Crescimento de banco e exposição de dados no histórico",
+      "probability": "high",
+      "impact": "Payloads e respostas completas podem consumir armazenamento e conter dados sensíveis.",
+      "mitigation": [
+        "Restringir consultas ao cliente associado.",
+        "Não registrar corpos, secrets ou tokens nos logs.",
+        "Acompanhar a capacidade do banco por meios operacionais existentes."
+      ],
+      "contingency_plan": "Realizar intervenção operacional de capacidade e tratamento de dados; não presumir limpeza automática."
+    },
+    {
+      "risk": "Backlog, duplicatas e entrega fora de ordem",
+      "probability": "medium",
+      "impact": "Worker único, processamento sequencial e bloqueio por retry podem atrasar eventos e produzir duplicatas ou ordem diferente no replay.",
+      "mitigation": [
+        "Persistir reservas, histórico e DLQ.",
+        "Documentar deduplicação por event_id para os destinatários.",
+        "Auditar replays administrativos."
+      ],
+      "contingency_plan": "Corrigir a causa da falha e executar replay manual autorizado; avaliar estratégia multiworker em fase futura."
+    },
+    {
+      "risk": "Inconsistência de chave entre banco e secret manager",
+      "probability": "medium",
+      "impact": "Falha parcial pode impedir assinatura ou deixar uma chave inconsistente.",
+      "mitigation": [
+        "Confirmar sucesso somente após persistência em ambos os sistemas.",
+        "Compensar ou reconciliar falhas.",
+        "Bloquear uso da chave afetada quando a compensação falhar."
+      ],
+      "contingency_plan": "Reconciliar manualmente e, se necessário, gerar novo kid e secret."
+    },
+    {
+      "risk": "Destino público mal configurado ou redirecionado",
+      "probability": "medium",
+      "impact": "Envio a destino indevido pode expor dados de pedidos.",
+      "mitigation": [
+        "Validar HTTPS e destino público no cadastro e antes do envio.",
+        "Permitir somente redirecionamentos HTTPS para destinos públicos.",
+        "Submeter a implementação à revisão de segurança."
+      ],
+      "contingency_plan": "Desativar o endpoint afetado, investigar o envio e corrigir a configuração."
+    }
+  ],
+  "acceptance_criteria": [
+    "Uma mudança válida de status com endpoints elegíveis persiste o mesmo event_id e entregas independentes; sem interessados não há evento e a criação em PENDING não publica.",
+    "Falha ao persistir evento, entrega ou falha por tamanho reverte status, estoque e histórico; payload de 65.537 bytes não é enviado.",
+    "O worker consulta pendências a cada 2 segundos, processa até 100 entregas por lote e aplica timeout HTTP de 10 segundos.",
+    "Resposta 2xx conclui a entrega; falhas usam as cinco esperas definidas e no máximo seis reservas por ciclo, com DLQ persistente ao esgotar.",
+    "Cada envio contém X-Event-Id, X-Webhook-Id, X-Key-Id e assinatura HMAC-SHA256 verificável sobre o payload.",
+    "Endpoints e redirecionamentos para destinos não públicos ou não HTTPS são recusados ou bloqueados.",
+    "CRUD, histórico e secrets negam acesso sem vínculo; replay exige ADMIN vinculado e gera registro de auditoria.",
+    "A rotação mantém a chave anterior por até 24 horas e nenhuma secret é revelada mais de uma vez.",
+    "Logs operacionais incluem identificadores e resultado sem expor secrets, tokens, payloads ou respostas externas.",
+    "Testes unitários e de integração passam, e o QA manual executa roteiro aprovado para os fluxos principal, falhas, retentativas, DLQ e replay."
+  ],
+  "testing_validation": {
+    "test_types": [
+      "Testes unitários para regras de elegibilidade, assinatura, retentativas, rotação de chave e autorização",
+      "Testes de integração para mudança de status, persistência transacional da outbox, worker, envio HTTP, DLQ e replay",
+      "Testes de segurança para autorização por vínculo e papel, proteção de destinos públicos e não exposição de secrets nos logs"
+    ],
+    "strategy": "Executar testes unitários e de integração automatizados e QA manual guiado por roteiro cobrindo cadastro, entrega bem-sucedida, falhas, recuperação após reinício, rotação, histórico e replay."
+  }
+}
