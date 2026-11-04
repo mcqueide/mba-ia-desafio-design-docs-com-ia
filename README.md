@@ -305,6 +305,69 @@ Foi utilizado o `Github Copilot` cli com o modelo `GPT-5.6 Terra` para criação
 
 Segui a sugestão de começar pelos ADRs, depois RFC, FDD, PRD, Tracker e por último o README. Cada documento foi gerado em blocos, com prompts específicos para cada seção. Após a geração inicial, revisei cada documento para garantir que todas as informações estavam corretas e consistentes com a transcrição da reunião.
 
+### Prompts customizados
+
+Prompt para criação da RFC.
+```markdown
+# Prompt para criação de RFC.
+
+Você é um criador Request for Comments (RFC). Transforme o transcição da reunião técnica (TRANSCRICAO.md) em uma proposta técnica da solução para revisão, abordagem geral, alternativas e questões em aberto. A ideia da RFC é responder "Como pretendemos resolver, e o que ainda está em aberto?".
+
+# Sua missão
+
+Produza o arquivo docs/RFC.md com a proposta técnica da solução, no formato de um documento submetido à equipe para revisão. O RFC opera em nível de arquitetura: apresenta a abordagem escolhida, as alternativas que foram colocadas na mesa e as questões deixadas em aberto. É um documento conciso (2 a 4 páginas); o detalhamento de implementação fica no FDD. 
+
+# Formato do documento
+
+Deve seguir o formato apresentado no curso e incluir, no mínimo:
+- Cabeçalho de metadados
+	- Número da RFC: Título
+	- Autor(es)
+	- Revisor(es); use os participantes da reunião como revisores
+	- Data de Publicação (mês e ano)
+	- Status: Accepted|Proposed|Deprecated|Superseded
+	- Substitui / É substituído por: Obsoletes (se anula uma RFC antiga) ou Updates (se altera partes de outra).
+	
+- Corpo do documento	
+	- Resumo executivo (TL;DR) da proposta
+	- Contexto e problema
+	- Proposta técnica (visão geral da solução, sem descer ao detalhe de implementação do FDD)
+	- Alternativas consideradas (pelo menos 2 alternativas reais discutidas e descartadas na reunião, cada uma com o trade-off que levou ao descarte)
+	- Questões em aberto (pelo menos 2 pontos levantados na reunião e não decididos ou adiados)
+	- Impacto e riscos
+	- Decisões relacionadas (links para os ADRs correspondentes)
+
+# O que não fazer.
+
+O RFC não deve duplicar o detalhamento do FDD. Ele responde "o que propomos e por quê"; o "como construir" em detalhe fica no FDD.
+```
+
+Prompt para geração do Tracker.
+```markdown
+# Tracker de Rastreabilidade
+
+Produza o arquivo docs/TRACKER.md, uma tabela markdown que mapeia cada item registrado nos seus documentos à origem na transcrição ou no código. O tracker funciona como uma referência cruzada: permite que qualquer leitor entenda de onde veio cada decisão, requisito ou restrição, e garante que a documentação está alinhada com o que foi efetivamente discutido e com o que existe no código.
+
+Formato obrigatório da tabela:
+
+ID | Documento | Tipo | Conteúdo (resumo) | Fonte | Localização
+ 	 	 	 	 	 
+Onde:
+
+ID: identificador único do item (ex: PRD-FR-01, RFC-ALT-02, FDD-CONTRATO-03, ADR-002)
+Documento: arquivo onde o item aparece (docs/PRD.md, docs/RFC.md, docs/FDD.md, docs/adrs/ADR-002-...md)
+Tipo: Requisito Funcional, Requisito Não Funcional, Decisão, Restrição, Trade-off, entre outros
+Conteúdo (resumo): descrição de uma linha do item
+Fonte: TRANSCRICAO ou CODIGO
+Localização: para TRANSCRICAO, timestamp + nome do falante (ex: [09:17] Diego). Para CODIGO, caminho do arquivo (ex: src/modules/orders/order.service.ts).
+Cobertura mínima: pelo menos 80% dos itens identificáveis nos seus documentos devem ter linha correspondente no tracker.
+
+# Validação
+
+Caso a cobertura mínima não seja alcançada, informe os itens não cobertos um por vez ao usuário para serem avaliados se devem ser removidos ou não, até que todos os itens não coberto sejam avaliados. Caso o usuário opte por remover o item não coberto, certifique de analisar os outros documentos para remover a referência não coberta deles também.
+
+```
+
 ### Iterações e ajustes
 
 Tive que fazer algumas iterações, nas primeiras tentativas, tentei utilizar os prompts disponíveis no curso, mas percebi que eles não estava levando em consideração a transcrição da reunião, então precisei modificar os prompts para cada documento.
