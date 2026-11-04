@@ -292,3 +292,29 @@ Cuidado com o que NÃO entra na documentação. A reunião descarta explicitamen
 A restrição de não alterar o código da aplicação é absoluta: o código serve de contexto e referência, e o entregável é puramente documental.
 
 Itere bastante. Os primeiros documentos que a IA gerar provavelmente serão superficiais ou redundantes. Volte com correções, peça refinamento de pontos específicos, peça para remover trechos vagos, peça exemplos concretos. O resultado final deve parecer escrito por alguém que pensou no problema com a IA ao lado, não por alguém que copiou e colou da transcrição.
+
+## Entrega do desafio
+
+Esse desafio teve objetivo de avaliar a capacidade do aluno de colocar em prático o conteúdo aprendido nesse módulo produzindo documentação técnica acionável a partir de uma transcrição de reunião e do código existente, usando IA como ferramenta principal.
+
+### Ferramentas de IA utilizadas
+
+Foi utilizado o `Github Copilot` cli com o modelo `GPT-5.6 Terra` para criação da documentação técnica, com prompts customizados para cada tipo de documento. O Copilot foi utilizado para gerar rascunhos iniciais, que foram refinados e ajustados manualmente para garantir precisão e aderência à transcrição da reunião.
+
+### Workflow adotado
+
+Segui a sugestão de começar pelos ADRs, depois RFC, FDD, PRD, Tracker e por último o README. Cada documento foi gerado em blocos, com prompts específicos para cada seção. Após a geração inicial, revisei cada documento para garantir que todas as informações estavam corretas e consistentes com a transcrição da reunião.
+
+### Iterações e ajustes
+
+Tive que fazer algumas iterações, nas primeiras tentativas, tentei utilizar os prompts disponíveis no curso, mas percebi que eles não estava levando em consideração a transcrição da reunião, então precisei modificar os prompts para cada documento.
+
+### Como navegar a entrega
+
+Sugestão de ordem de leitura dos documentos:
+
+1. `docs/PRD.md` - Para entender o problema, público, escopo e métricas de sucesso.
+2. `docs/RFC.md` - Para entender a proposta técnica da solução, alternativas e questões em aberto.
+3. `docs/FDD.md` - Para detalhes de implementação, fluxos, contratos e integração com o código existente.
+4. `docs/adrs/` - Para entender as decisões arquiteturais individuais e o raciocínio por trás delas.
+5. `docs/TRACKER.md` - Para rastreabilidade de cada item à origem na transcrição ou no código.
