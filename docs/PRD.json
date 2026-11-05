@@ -49,25 +49,57 @@
     "in_scope": [
       "CRUD autenticado de endpoints HTTPS por cliente, com filtros por status, histórico de entregas e gerenciamento de secrets",
       "Registro transacional de eventos, worker único, retentativas, DLQ persistente, recuperação após reinício e replay administrativo auditado",
-      "Assinatura HMAC-SHA256, secret exclusiva por endpoint, rotação com janela de 24 horas e deduplicação do destinatário por X-Event-Id",
+      "Assinatura HMAC-SHA256, com X-Timestamp e proteção opcional por timestamp, secret exclusiva por endpoint, rotação com janela de 24 horas e deduplicação do destinatário por X-Event-Id",
       "Autorização por vínculo entre usuário e cliente e papel ADMIN para replay"
     ],
     "out_of_scope": [
       "Evento para a criação inicial do pedido no status PENDING",
       "Notificações por e-mail, dashboard visual, limpeza ou arquivamento automático de entregas",
-      "Rate limiting de saída, múltiplos workers, circuit breaker, garantia de entrega eventual, exatamente uma vez ou ordenação global",
-      "Assinatura que inclua timestamp e validação de idade da mensagem"
+      "Rate limiting de saída, múltiplos workers, circuit breaker, garantia de entrega eventual, exatamente uma vez ou ordenação global"
     ]
   },
   "functional_requirements": [
     {
       "id": "FR-001",
-      "name": "Configurar endpoints de webhook",
-      "description": "Usuários vinculados ao cliente devem criar, listar, editar e remover endpoints HTTPS ativos e selecionar os status de pedido que desejam receber.",
+      "name": "Cadastrar endpoint de webhook",
+      "description": "Usuários autenticados devem cadastrar um endpoint HTTPS para um cliente, com uma secret gerada pela plataforma.",
       "main_flow": [
-        "Usuário autenticado e vinculado ao cliente cadastra URL HTTPS e uma lista não vazia de status.",
-        "A plataforma gera uma secret exclusiva, persiste a configuração e a retorna somente na criação.",
-        "Usuário lista, atualiza URL, filtros ou estado ativo, ou remove o endpoint."
+        "Usuário autenticado envia URL HTTPS, cliente e a lista não vazia de status.",
+        "A plataforma gera a secret e persiste a configuração ativa.",
+        "A API retorna a configuração criada e a secret."
+      ],
+      "alternative_flows": [
+        "O customer_id é enviado no corpo ou no caminho da requisição; ele não é inferido do JWT."
+      ],
+      "known_errors": [
+        "URL não HTTPS ou lista de status vazia retorna erro de validação.",
+        "Usuário sem autenticação recebe erro de acesso."
+      ],
+      "priority": "high"
+    },
+    {
+      "id": "FR-002",
+      "name": "Listar endpoints de webhook",
+      "description": "Usuários autenticados devem consultar os endpoints configurados para um cliente.",
+      "main_flow": [
+        "Usuário autenticado solicita a lista de webhooks de um cliente.",
+        "A API retorna as configurações de endpoint e seus filtros de status."
+      ],
+      "alternative_flows": [
+        "A lista pode não conter endpoints cadastrados para o cliente."
+      ],
+      "known_errors": [
+        "Usuário sem autenticação recebe erro de acesso."
+      ],
+      "priority": "medium"
+    },
+    {
+      "id": "FR-003",
+      "name": "Editar ou remover endpoint de webhook",
+      "description": "Usuários autenticados devem atualizar a configuração de um endpoint ou removê-lo.",
+      "main_flow": [
+        "Usuário autenticado atualiza URL, filtros de status ou estado ativo do endpoint.",
+        "Usuário autenticado pode remover o endpoint que não será mais utilizado."
       ],
       "alternative_flows": [
         "Alterar filtros não cancela entregas já elegíveis; a URL atualizada é usada para entregas pendentes.",
@@ -75,13 +107,29 @@
       ],
       "known_errors": [
         "URL não HTTPS ou lista de status vazia retorna erro de validação.",
-        "Usuário sem autenticação ou sem vínculo com o cliente recebe erro de acesso.",
         "Endpoint inexistente retorna erro de recurso não encontrado."
+      ],
+      "priority": "medium"
+    },
+    {
+      "id": "FR-004",
+      "name": "Filtrar notificações por status",
+      "description": "Cada endpoint deve receber somente eventos dos status de pedido selecionados na sua configuração.",
+      "main_flow": [
+        "Usuário informa a lista de status de interesse na criação ou edição do endpoint.",
+        "Na mudança de status, o sistema seleciona os endpoints ativos cujo filtro contém o novo status.",
+        "Sem endpoint interessado, o sistema não registra evento na outbox."
+      ],
+      "alternative_flows": [
+        "Filtros diferentes podem ser configurados para endpoints distintos do mesmo cliente."
+      ],
+      "known_errors": [
+        "Lista de status vazia retorna erro de validação."
       ],
       "priority": "high"
     },
     {
-      "id": "FR-002",
+      "id": "FR-005",
       "name": "Publicar evento na mudança de status",
       "description": "O sistema deve registrar um snapshot do pedido e uma entrega por endpoint elegível na mesma transação da mudança de status.",
       "main_flow": [
@@ -100,7 +148,7 @@
       "priority": "high"
     },
     {
-      "id": "FR-003",
+      "id": "FR-006",
       "name": "Entregar eventos de forma assíncrona",
       "description": "Um worker separado deve enviar eventos pendentes aos endpoints públicos configurados, preservar o event_id e aplicar retentativas e DLQ.",
       "main_flow": [
@@ -121,7 +169,7 @@
       "priority": "high"
     },
     {
-      "id": "FR-004",
+      "id": "FR-007",
       "name": "Consultar histórico de entregas",
       "description": "Usuários vinculados ao cliente devem consultar o histórico das últimas 100 entregas de um endpoint.",
       "main_flow": [
@@ -138,7 +186,7 @@
       "priority": "medium"
     },
     {
-      "id": "FR-005",
+      "id": "FR-008",
       "name": "Rotacionar e consultar secrets",
       "description": "Usuários vinculados devem rotacionar a secret de um endpoint e consultar identificadores de chave sem expor secrets já reveladas.",
       "main_flow": [
@@ -157,7 +205,7 @@
       "priority": "high"
     },
     {
-      "id": "FR-006",
+      "id": "FR-009",
       "name": "Reprocessar eventos da DLQ",
       "description": "Administradores vinculados ao cliente devem solicitar replay de uma entrada da DLQ, preservando sua identidade e registrando auditoria.",
       "main_flow": [
@@ -196,8 +244,8 @@
       "specifications": [
         "Autenticação é obrigatória para gerenciamento e histórico; autorização exige vínculo com o cliente do recurso.",
         "Replay exige papel ADMIN vinculado ao cliente e auditoria persistida.",
-        "Cada endpoint usa secret exclusiva em secret manager e HMAC-SHA256 sobre os bytes do payload.",
-        "Aceitar apenas destinos públicos HTTPS e redirecionamentos HTTPS para destinos públicos."
+        "Cada endpoint usa secret exclusiva em secret manager e HMAC-SHA256 sobre os bytes do payload; com proteção por timestamp, assina timestamp e payload.",
+        "Aceitar URLs HTTPS, inclusive destinos internos, e bloquear redirecionamentos para HTTP."
       ]
     },
     {
@@ -240,14 +288,14 @@
   "architecture": {
     "approach": "Outbox transacional no MySQL: o serviço de pedidos registra eventos e entregas na mesma transação da mudança de status, enquanto um worker único em processo separado faz o envio assíncrono.",
     "components": [
-      "Módulo src/modules/webhooks com controller, service, repository, routes e schemas Zod",
+      "Arquivo planejado a criar: módulo src/modules/webhooks com controller, service, repository, routes e schemas Zod",
       "Serviço de pedidos integrado por publishWebhookEvent(tx, order, fromStatus, toStatus)",
-      "Worker src/worker.ts com PrismaClient próprio, polling e processador de entregas",
+      "Arquivo planejado a criar: worker src/worker.ts com PrismaClient próprio, polling e processador de entregas",
       "MySQL como fonte de verdade para configurações, outbox, entregas, tentativas, DLQ, chaves e auditoria",
       "Secret manager com provedor ainda a ser definido pela plataforma"
     ],
     "integrations": [
-      "Endpoints HTTPS públicos configurados pelos clientes recebem notificações HTTP POST assinadas",
+      "Endpoints HTTPS configurados pelos clientes recebem notificações HTTP POST assinadas",
       "Secret manager armazena secrets HMAC por endpoint",
       "Middleware de autenticação evolui para validar vínculo e papel por cliente"
     ]
@@ -269,9 +317,9 @@
       "trade_off": "Destinatários devem deduplicar por X-Event-Id, e replay pode ser recebido fora da ordem."
     },
     {
-      "decision": "Assinar somente o payload com HMAC-SHA256",
-      "justification": "Permite validar autenticidade e integridade com uma integração simples para os clientes.",
-      "trade_off": "Não limita a idade da mensagem; a deduplicação por event_id continua obrigatória."
+      "decision": "Assinar eventos com HMAC-SHA256 e suportar proteção por timestamp",
+      "justification": "Permite validar autenticidade e integridade do payload e, quando habilitada, limitar a idade da mensagem com X-Timestamp.",
+      "trade_off": "O destinatário precisa concordar sobre os bytes assinados e sincronizar relógios quando a proteção por timestamp estiver habilitada; a deduplicação por event_id continua obrigatória."
     }
   ],
   "dependencies": [
@@ -288,7 +336,7 @@
     {
       "type": "organizational",
       "title": "Revisão de segurança",
-      "description": "A equipe de Segurança precisa revisar HMAC, geração e rotação de secrets e as proteções para destinos públicos antes do deploy."
+      "description": "A equipe de Segurança precisa revisar HMAC, geração e rotação de secrets e o envio para destinos HTTPS antes do deploy."
     }
   ],
   "risks": [
@@ -326,12 +374,12 @@
       "contingency_plan": "Reconciliar manualmente e, se necessário, gerar novo kid e secret."
     },
     {
-      "risk": "Destino público mal configurado ou redirecionado",
+      "risk": "Destino HTTPS mal configurado ou redirecionado",
       "probability": "medium",
       "impact": "Envio a destino indevido pode expor dados de pedidos.",
       "mitigation": [
-        "Validar HTTPS e destino público no cadastro e antes do envio.",
-        "Permitir somente redirecionamentos HTTPS para destinos públicos.",
+        "Validar HTTPS no cadastro e antes do envio.",
+        "Bloquear redirecionamentos para HTTP.",
         "Submeter a implementação à revisão de segurança."
       ],
       "contingency_plan": "Desativar o endpoint afetado, investigar o envio e corrigir a configuração."
@@ -342,8 +390,8 @@
     "Falha ao persistir evento, entrega ou falha por tamanho reverte status, estoque e histórico; payload de 65.537 bytes não é enviado.",
     "O worker consulta pendências a cada 2 segundos, processa até 100 entregas por lote e aplica timeout HTTP de 10 segundos.",
     "Resposta 2xx conclui a entrega; falhas usam as cinco esperas definidas e no máximo seis reservas por ciclo, com DLQ persistente ao esgotar.",
-    "Cada envio contém X-Event-Id, X-Webhook-Id, X-Key-Id e assinatura HMAC-SHA256 verificável sobre o payload.",
-    "Endpoints e redirecionamentos para destinos não públicos ou não HTTPS são recusados ou bloqueados.",
+    "Cada envio contém X-Event-Id, X-Webhook-Id, X-Key-Id, X-Timestamp e assinatura HMAC-SHA256 verificável sobre os bytes definidos para o modo de assinatura.",
+    "Endpoints não HTTPS e redirecionamentos para HTTP são recusados ou bloqueados.",
     "CRUD, histórico e secrets negam acesso sem vínculo; replay exige ADMIN vinculado e gera registro de auditoria.",
     "A rotação mantém a chave anterior por até 24 horas e nenhuma secret é revelada mais de uma vez.",
     "Logs operacionais incluem identificadores e resultado sem expor secrets, tokens, payloads ou respostas externas.",
@@ -353,7 +401,7 @@
     "test_types": [
       "Testes unitários para regras de elegibilidade, assinatura, retentativas, rotação de chave e autorização",
       "Testes de integração para mudança de status, persistência transacional da outbox, worker, envio HTTP, DLQ e replay",
-      "Testes de segurança para autorização por vínculo e papel, proteção de destinos públicos e não exposição de secrets nos logs"
+      "Testes de segurança para autorização por vínculo e papel, validação de HTTPS, bloqueio de redirecionamento para HTTP e não exposição de secrets nos logs"
     ],
     "strategy": "Executar testes unitários e de integração automatizados e QA manual guiado por roteiro cobrindo cadastro, entrega bem-sucedida, falhas, recuperação após reinício, rotação, histórico e replay."
   }

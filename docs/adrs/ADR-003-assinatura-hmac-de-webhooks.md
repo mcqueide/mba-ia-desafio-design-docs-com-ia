@@ -22,8 +22,9 @@ O código atual autentica chamadas recebidas por JWT; não há assinatura de web
 ## Opções consideradas
 
 1. HMAC-SHA256 com secret independente por endpoint.
+2. Uma secret global compartilhada entre todos os endpoints.
 
-Nenhuma alternativa foi discutida. A escolha considerou o uso difundido de HMAC-SHA256 e a disponibilidade de bibliotecas nos clientes.
+A segunda opção é uma alternativa plausível adicionada na revisão do ADR; a reunião não registrou alternativas para HMAC-SHA256.
 
 ## Resultado da decisão
 
@@ -44,7 +45,10 @@ Na rotação, a chave antiga permanece válida por 24 horas. O emissor continua 
 
 ### Alternativas
 
-Nenhuma alternativa foi discutida na reunião.
+### Secret global compartilhada
+
+- **Pró:** simplifica o provisionamento e a rotação de chaves para a plataforma.
+- **Contra:** o vazamento de uma única secret compromete a validação de todos os endpoints.
 
 ## Consequências
 

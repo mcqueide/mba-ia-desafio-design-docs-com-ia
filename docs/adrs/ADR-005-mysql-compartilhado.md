@@ -22,8 +22,9 @@ A reunião escolheu aproveitar o banco existente para a outbox proposta, em vez 
 ## Opções consideradas
 
 1. MySQL como banco relacional compartilhado.
+2. Redis Streams para eventos da outbox.
 
-Não há registro das alternativas consideradas para a escolha original do banco.
+Redis Streams foi alternativa discutida para a outbox, embora não haja registro de alternativas para a escolha original do banco.
 
 ## Resultado da decisão
 
@@ -42,7 +43,10 @@ A motivação original não é conhecida, e não há informação disponível so
 
 ### Alternativas
 
-Não há evidência suficiente para descrever os trade-offs das alternativas originais.
+### Redis Streams
+
+- **Pró:** separa o fluxo de eventos do banco transacional da aplicação.
+- **Contra:** adiciona infraestrutura e operação que a equipe considerou excessivas para o contexto atual.
 
 ## Consequências
 

@@ -23,8 +23,9 @@ A reunião propôs reutilizar a autenticação no CRUD de webhooks e restringir 
 ## Opções consideradas
 
 1. Reutilizar JWT para autenticação e autorização por papéis.
+2. Chaves de API por cliente para gerenciar webhooks.
 
-Não foram avaliadas outras alternativas para a feature: o JWT foi escolhido por já ser utilizado pela API. A motivação da escolha original da API permanece desconhecida.
+A segunda opção é uma alternativa plausível adicionada na revisão do ADR; não há registro de que tenha sido avaliada na decisão original.
 
 ## Resultado da decisão
 
@@ -47,7 +48,10 @@ O primeiro cliente, usuário e vínculo ADMIN serão provisionados por um operad
 
 ### Alternativas
 
-Nenhuma alternativa foi avaliada para a reutilização na feature; não há evidência das alternativas originais da API.
+### Chaves de API por cliente
+
+- **Pró:** vinculam a credencial diretamente ao cliente consumidor da API.
+- **Contra:** introduzem novo ciclo de provisionamento, revogação e armazenamento de credenciais, paralelo ao JWT existente.
 
 ## Consequências
 

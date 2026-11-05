@@ -7,12 +7,15 @@
 | PRD-CTX-03 | docs/PRD.md | Restrição | A feature é somente de webhooks de saída. | TRANSCRICAO | [09:02] Marcos |
 | PRD-PROB-01 | docs/PRD.md | Problema | Polling recorrente torna a integração dos clientes lenta e cara. | TRANSCRICAO | [09:00] Marcos |
 | PRD-PROB-02 | docs/PRD.md | Risco de negócio | A Atlas Comercial pode migrar para concorrente sem a feature. | TRANSCRICAO | [09:00] Marcos |
-| PRD-FR-001 | docs/PRD.md | Requisito Funcional | CRUD autenticado de endpoints HTTPS e filtros por status. | TRANSCRICAO | [09:31] Marcos |
-| PRD-FR-002 | docs/PRD.md | Requisito Funcional | Persistir evento e entregas elegíveis na transação da mudança de status. | TRANSCRICAO | [09:40] Bruno |
-| PRD-FR-003 | docs/PRD.md | Requisito Funcional | Worker separado entrega eventos em polling e aplica retentativas e DLQ. | TRANSCRICAO | [09:06] Diego |
-| PRD-FR-004 | docs/PRD.md | Requisito Funcional | Consultar até 100 entregas recentes de um webhook. | TRANSCRICAO | [09:34] Marcos |
-| PRD-FR-005 | docs/PRD.md | Requisito Funcional | Rotacionar secret por endpoint, preservando a anterior por 24 horas. | TRANSCRICAO | [09:21] Sofia |
-| PRD-FR-006 | docs/PRD.md | Requisito Funcional | ADMIN pode solicitar replay manual de entrada da DLQ com auditoria. | TRANSCRICAO | [09:18] Diego |
+| PRD-FR-001 | docs/PRD.md | Requisito Funcional | Cadastrar endpoint HTTPS, filtros e secret gerada pela plataforma. | TRANSCRICAO | [09:31] Marcos |
+| PRD-FR-002 | docs/PRD.md | Requisito Funcional | Listar os webhooks configurados para um cliente. | TRANSCRICAO | [09:33] Bruno |
+| PRD-FR-003 | docs/PRD.md | Requisito Funcional | Editar ou remover uma configuração de webhook. | TRANSCRICAO | [09:33] Bruno |
+| PRD-FR-004 | docs/PRD.md | Requisito Funcional | Filtrar endpoints pelos status de pedido de interesse durante a inserção na outbox. | TRANSCRICAO | [09:33] Marcos |
+| PRD-FR-005 | docs/PRD.md | Requisito Funcional | Persistir evento e entregas elegíveis na transação da mudança de status. | TRANSCRICAO | [09:40] Bruno |
+| PRD-FR-006 | docs/PRD.md | Requisito Funcional | Worker separado entrega eventos em polling e aplica retentativas e DLQ. | TRANSCRICAO | [09:06] Diego |
+| PRD-FR-007 | docs/PRD.md | Requisito Funcional | Consultar até 100 entregas recentes de um webhook. | TRANSCRICAO | [09:34] Marcos |
+| PRD-FR-008 | docs/PRD.md | Requisito Funcional | Rotacionar secret por endpoint, preservando a anterior por 24 horas. | TRANSCRICAO | [09:21] Sofia |
+| PRD-FR-009 | docs/PRD.md | Requisito Funcional | ADMIN pode solicitar replay manual de entrada da DLQ com auditoria. | TRANSCRICAO | [09:18] Diego |
 | PRD-RNF-01 | docs/PRD.md | Requisito Não Funcional | Worker consulta entregas pendentes a cada 2 segundos. | TRANSCRICAO | [09:09] Diego |
 | PRD-RNF-02 | docs/PRD.md | Requisito Não Funcional | Chamada HTTP possui timeout de 10 segundos. | TRANSCRICAO | [09:42] Diego |
 | PRD-RNF-03 | docs/PRD.md | Requisito Não Funcional | Corpo do evento é limitado a 64 KB e não deve ser truncado. | TRANSCRICAO | [09:23] Sofia |
@@ -63,10 +66,47 @@
 | FDD-ERR-02 | docs/FDD.md | Decisão | Todos os códigos de erro do módulo de webhooks devem usar o prefixo `WEBHOOK_`. | TRANSCRICAO | [09:29] Larissa |
 | FDD-OBS-01 | docs/FDD.md | Observabilidade | O projeto usa Pino como logger compartilhado. | TRANSCRICAO | [09:29] Bruno |
 | FDD-COMP-01 | docs/FDD.md | Compatibilidade | Mudança de status já usa Prisma em transação e requer evolução sem quebrar a operação atual. | CODIGO | src/modules/orders/order.service.ts |
-| ADR-001 | docs/adrs/generated/API/ADR-001-api-rest-versionada.md | Decisão | API existente expõe recursos HTTP JSON com versão no caminho. | CODIGO | src/routes/index.ts |
-| ADR-002 | docs/adrs/generated/API/ADR-002-express-framework-http.md | Decisão | Express é o framework HTTP usado pela aplicação. | CODIGO | package.json |
-| ADR-003 | docs/adrs/generated/CROSS/ADR-003-assinatura-hmac-de-webhooks.md | Decisão | HMAC-SHA256 e uma secret independente por endpoint autenticam notificações. | TRANSCRICAO | [09:20] Sofia |
-| ADR-004 | docs/adrs/generated/CROSS/ADR-004-autenticacao-jwt-e-papeis.md | Restrição | JWT atual contém papel global ADMIN ou OPERATOR e não vínculo com cliente. | CODIGO | src/middlewares/auth.middleware.ts |
-| ADR-005 | docs/adrs/generated/DATA/ADR-005-mysql-compartilhado.md | Decisão | MySQL existente é reutilizado para a outbox em vez de Redis Streams. | TRANSCRICAO | [09:07] Diego |
-| ADR-006 | docs/adrs/generated/DATA/ADR-006-prisma-acesso-a-dados.md | Decisão | Prisma é a camada de acesso a dados e deve ser reutilizado pelo worker. | TRANSCRICAO | [09:11] Bruno |
-| ADR-007 | docs/adrs/generated/ORDERS/ADR-007-webhooks-assincronos-de-status.md | Decisão | Eventos são registrados em outbox e entregues por worker assíncrono. | TRANSCRICAO | [09:06] Diego |
+| ADR-001 | docs/adrs/ADR-001-api-rest-versionada.md | Decisão | API existente expõe recursos HTTP JSON com versão no caminho. | CODIGO | src/routes/index.ts |
+| ADR-002 | docs/adrs/ADR-002-express-framework-http.md | Decisão | Express é o framework HTTP usado pela aplicação. | CODIGO | package.json |
+| ADR-003 | docs/adrs/ADR-003-assinatura-hmac-de-webhooks.md | Decisão | HMAC-SHA256 e uma secret independente por endpoint autenticam notificações. | TRANSCRICAO | [09:20] Sofia |
+| ADR-004 | docs/adrs/ADR-004-autenticacao-jwt-e-papeis.md | Restrição | JWT atual contém papel global ADMIN ou OPERATOR e não vínculo com cliente. | CODIGO | src/middlewares/auth.middleware.ts |
+| ADR-005 | docs/adrs/ADR-005-mysql-compartilhado.md | Decisão | MySQL existente é reutilizado para a outbox em vez de Redis Streams. | TRANSCRICAO | [09:07] Diego |
+| ADR-006 | docs/adrs/ADR-006-prisma-acesso-a-dados.md | Decisão | Prisma é a camada de acesso a dados e deve ser reutilizado pelo worker. | TRANSCRICAO | [09:11] Bruno |
+| ADR-007 | docs/adrs/ADR-007-webhooks-assincronos-de-status.md | Decisão | Eventos são registrados em outbox e entregues por worker assíncrono. | TRANSCRICAO | [09:06] Diego |
+| RFC-ALT-01 | docs/RFC.md | Alternativa | Envio HTTP síncrono foi descartado porque vincula a alteração do pedido à disponibilidade do cliente. | TRANSCRICAO | [09:04] Bruno |
+| RFC-ALT-02 | docs/RFC.md | Alternativa | Redis Streams foi descartado por adicionar infraestrutura excessiva. | TRANSCRICAO | [09:07] Diego |
+| RFC-ALT-03 | docs/RFC.md | Alternativa | Trigger de banco foi descartada porque não notifica diretamente processo externo. | TRANSCRICAO | [09:09] Diego |
+| RFC-OPEN-01 | docs/RFC.md | Questão em Aberto | Rate limiting de saída permanece para decisão posterior. | TRANSCRICAO | [09:38] Larissa |
+| RFC-OPEN-02 | docs/RFC.md | Questão em Aberto | Retenção e arquivamento de entregas antigas permanecem sem política definida. | TRANSCRICAO | [09:08] Diego |
+| RFC-OPEN-03 | docs/RFC.md | Questão em Aberto | A estratégia de escala sem perder ordenação por pedido permanece futura. | TRANSCRICAO | [09:12] Diego |
+| RFC-OPEN-04 | docs/RFC.md | Questão em Aberto | Monitoramento de backlog, DLQ e proteção de destinos requer revisão de segurança. | TRANSCRICAO | [09:46] Sofia |
+| RFC-RISK-01 | docs/RFC.md | Risco | Persistir outbox na transação aumenta a carga no MySQL e pode bloquear a mudança de status. | TRANSCRICAO | [09:40] Bruno |
+| RFC-RISK-02 | docs/RFC.md | Risco | Worker único, indisponibilidade e retentativas podem atrasar entregas. | TRANSCRICAO | [09:12] Diego |
+| RFC-RISK-03 | docs/RFC.md | Risco | Destinatários devem deduplicar eventos recebidos mais de uma vez. | TRANSCRICAO | [09:24] Diego |
+| RFC-RISK-04 | docs/RFC.md | Risco | Gestão de secrets e revisão de segurança são necessárias antes do deploy. | TRANSCRICAO | [09:46] Sofia |
+| FDD-CTR-07 | docs/FDD.md | Contrato | Rotação gera nova secret e mantém a anterior válida por 24 horas. | TRANSCRICAO | [09:21] Sofia |
+| FDD-CTR-10 | docs/FDD.md | Contrato | Notificação contém snapshot enxuto sem itens do pedido. | TRANSCRICAO | [09:43] Diego |
+| FDD-CTR-11 | docs/FDD.md | Contrato | Notificação usa os headers X-Event-Id, X-Signature, X-Timestamp e X-Webhook-Id. | TRANSCRICAO | [09:44] Diego |
+| FDD-ERR-03 | docs/FDD.md | Erro | URL ou filtro de status inválido usa código específico do módulo de webhooks. | TRANSCRICAO | [09:28] Bruno |
+| FDD-ERR-04 | docs/FDD.md | Erro | Endpoint inexistente usa código específico do módulo de webhooks. | TRANSCRICAO | [09:28] Bruno |
+| FDD-ERR-05 | docs/FDD.md | Erro | Falha de persistência do evento reverte a transação do pedido. | TRANSCRICAO | [09:40] Bruno |
+| FDD-ERR-06 | docs/FDD.md | Erro | Payload acima de 64 KB não é enviado. | TRANSCRICAO | [09:23] Sofia |
+| FDD-ERR-07 | docs/FDD.md | Erro | Endpoint desativado ou removido gera falha permanente sem envio HTTP. | TRANSCRICAO | [09:33] Bruno |
+| FDD-ERR-08 | docs/FDD.md | Erro | Resposta não 2xx, timeout ou erro de rede aplicam retentativas e DLQ. | TRANSCRICAO | [09:15] Diego |
+| FDD-ERR-09 | docs/FDD.md | Erro | Interrupção do worker preserva a identidade do evento para recuperação. | TRANSCRICAO | [09:11] Larissa |
+| FDD-ERR-11 | docs/FDD.md | Erro | Replay já ativo não deve criar um segundo ciclo. | TRANSCRICAO | [09:18] Diego |
+| FDD-RISK-01 | docs/FDD.md | Risco | Histórico com payload e resposta pode crescer e expor dados sensíveis. | TRANSCRICAO | [09:34] Marcos |
+| FDD-RISK-02 | docs/FDD.md | Risco | Destinos HTTPS e redirecionamentos exigem revisão de segurança. | TRANSCRICAO | [09:46] Sofia |
+| FDD-RISK-03 | docs/FDD.md | Risco | Backlog, duplicatas e ordenação exigem recuperação e deduplicação. | TRANSCRICAO | [09:12] Diego |
+| FDD-RISK-04 | docs/FDD.md | Risco | Falhas na gestão de secret podem impedir assinatura de notificações. | TRANSCRICAO | [09:21] Sofia |
+| ADR-005-ALT-01 | docs/adrs/ADR-005-mysql-compartilhado.md | Alternativa | Redis Streams foi considerado para a outbox e descartado por custo operacional. | TRANSCRICAO | [09:07] Diego |
+| ADR-007-ALT-01 | docs/adrs/ADR-007-webhooks-assincronos-de-status.md | Alternativa | Chamada HTTP síncrona foi rejeitada porque atrasaria a mudança de status. | TRANSCRICAO | [09:04] Bruno |
+| ADR-007-ALT-02 | docs/adrs/ADR-007-webhooks-assincronos-de-status.md | Alternativa | Redis Streams foi rejeitado por adicionar infraestrutura. | TRANSCRICAO | [09:07] Diego |
+| ADR-007-ALT-03 | docs/adrs/ADR-007-webhooks-assincronos-de-status.md | Alternativa | Trigger de banco não resolve a notificação de processo externo. | TRANSCRICAO | [09:09] Diego |
+| PRD-RNF-07 | docs/PRD.md | Requisito Não Funcional | Notificações incluem X-Timestamp para o destinatário detectar replays. | TRANSCRICAO | [09:44] Diego |
+| PRD-ARC-07 | docs/PRD.md | Decisão | HMAC-SHA256 com secret exclusiva autentica o payload e pode usar timestamp. | TRANSCRICAO | [09:20] Sofia |
+| FDD-INT-01 | docs/FDD.md | Integração | A publicação proposta se integra à transação de mudança de status existente. | CODIGO | src/modules/orders/order.service.ts |
+| FDD-INT-02 | docs/FDD.md | Integração | O schema Prisma existente deve receber os modelos da feature. | CODIGO | prisma/schema.prisma |
+| FDD-INT-03 | docs/FDD.md | Integração | As rotas da feature serão montadas no agregador de rotas existente. | CODIGO | src/routes/index.ts |
+| FDD-INT-04 | docs/FDD.md | Integração | As dependências da feature serão registradas na composição da aplicação. | CODIGO | src/app.ts |
+| FDD-INT-05 | docs/FDD.md | Integração | A autenticação existente precisa evoluir para autorização por vínculo de cliente. | CODIGO | src/middlewares/auth.middleware.ts |

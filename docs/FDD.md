@@ -65,7 +65,7 @@ O limite de seis chamadas descrito na RFC-001 e no ADR-007 é refinado neste FDD
 **Integração com o sistema existente**
 - Em [`src/modules/orders/order.service.ts`](../src/modules/orders/order.service.ts), chamar a função proposta `publishWebhookEvent(tx, order, fromStatus, toStatus)` dentro da transação de `changeStatus`; não chamar HTTP nesse ponto.
 - Evoluir [`prisma/schema.prisma`](../prisma/schema.prisma) com vínculo por cliente e registros de configuração, evento, entregas, tentativas, DLQ, chaves e auditoria. Como proposta, indexar elegibilidade por estado e próximo horário, e ordenação por pedido, timestamp e ID; garantir unicidade do replay ativo por entrada de DLQ de forma transacional. O esquema físico exato requer revisão.
-- Criar `src/modules/webhooks/` conforme o padrão de controller, service, repository, routes e schemas; montar rotas em [`src/routes/index.ts`](../src/routes/index.ts) e dependências em [`src/app.ts`](../src/app.ts). Criar `src/worker.ts` com PrismaClient próprio para a mesma `DATABASE_URL`.
+- Arquivos planejados a criar: `src/modules/webhooks/`, conforme o padrão de controller, service, repository, routes e schemas, e `src/worker.ts`, com PrismaClient próprio para a mesma `DATABASE_URL`. Montar as rotas em [`src/routes/index.ts`](../src/routes/index.ts) e as dependências em [`src/app.ts`](../src/app.ts).
 - Evoluir [`src/middlewares/auth.middleware.ts`](../src/middlewares/auth.middleware.ts) para consultar vínculo e papel por cliente: o papel global atual não comprova associação. Somente ADMIN cadastra clientes e gerencia vínculos dos clientes associados; o solicitante vira primeiro ADMIN do novo cliente. Somente ADMIN cria ADMIN e não se remove o último ADMIN. O primeiro cliente, usuário e vínculo ADMIN são provisionados por operador autorizado fora do registro público, que não poderá criar ADMIN.
 
 ---
@@ -349,7 +349,7 @@ Os nomes abaixo são propostas de códigos específicos do módulo. Eles seguem 
 - **Impacto:** SSRF ou vazamento de dados, pois qualquer URL HTTPS, inclusive interna, e redirecionamentos HTTPS são permitidos.
 - **Mitigação:**
     - Exigir HTTPS e bloquear redirecionamento para HTTP.
-    - Submeter a implementação à revisão de segurança antes do deploy. Não há bloqueio de rede interna nesta fase.
+    - Submeter a implementação à revisão de segurança antes do deploy.
 - **Plano de contingência:** desativar o endpoint afetado e investigar; restrições adicionais de destino exigem decisão posterior.
 
 ### Backlog, duplicatas e ordenação

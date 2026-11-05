@@ -22,8 +22,9 @@ O histórico disponível não registra as alternativas consideradas. Conforme es
 ## Opções consideradas
 
 1. API HTTP orientada a recursos com versão no caminho.
+2. Versionamento por parâmetro de consulta, como `?version=1`.
 
-Não há registro dos protocolos ou estratégias de versionamento alternativos avaliados.
+A segunda opção é uma alternativa plausível adicionada na revisão do ADR; não há registro de que tenha sido avaliada na decisão original.
 
 ## Resultado da decisão
 
@@ -40,7 +41,10 @@ O código demonstra o estilo HTTP e a versão no caminho. A intenção é permit
 
 ### Alternativas
 
-Não há registro das opções efetivamente avaliadas e de seus trade-offs.
+### Versionamento por parâmetro de consulta
+
+- **Pró:** mantém a rota estável e permite selecionar a versão explicitamente na requisição.
+- **Contra:** mistura a seleção de contrato com parâmetros de consulta e reduz a visibilidade da versão na rota.
 
 ## Consequências
 

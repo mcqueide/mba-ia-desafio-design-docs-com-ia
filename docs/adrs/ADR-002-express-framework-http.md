@@ -20,8 +20,9 @@ O histórico disponível mostra a presença do framework desde o primeiro commit
 ## Opções consideradas
 
 1. Express como framework HTTP.
+2. Fastify como framework HTTP.
 
-Não há registro dos frameworks ou abordagens originalmente avaliados.
+A segunda opção é uma alternativa plausível adicionada na revisão do ADR; não há registro de que tenha sido avaliada na decisão original.
 
 ## Resultado da decisão
 
@@ -38,7 +39,10 @@ Express é a implementação observada no código; a escolha levou em conta sua 
 
 ### Alternativas
 
-Não há registro suficiente para comparar as alternativas originais.
+### Fastify
+
+- **Pró:** oferece validação e serialização orientadas a esquema com foco em desempenho.
+- **Contra:** exigiria adaptar a composição de rotas, middlewares e testes já baseados nas interfaces do Express.
 
 ## Consequências
 

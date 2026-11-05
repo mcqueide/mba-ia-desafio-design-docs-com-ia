@@ -46,26 +46,60 @@ Problemas priorizados
 Incluso
 - CRUD autenticado de endpoints HTTPS por cliente, com filtros por status, histórico de entregas e gerenciamento de secrets.
 - Registro transacional de eventos, worker único, retentativas, DLQ persistente, recuperação após reinício e replay administrativo auditado.
-- Assinatura HMAC-SHA256, secret exclusiva por endpoint, rotação com janela de 24 horas e deduplicação do destinatário por `X-Event-Id`.
+- Assinatura HMAC-SHA256, com `X-Timestamp` e proteção opcional por timestamp, secret exclusiva por endpoint, rotação com janela de 24 horas e deduplicação do destinatário por `X-Event-Id`.
 - Autorização por vínculo entre usuário e cliente e papel ADMIN para replay.
 
 Fora de escopo
 - Evento para a criação inicial do pedido no status `PENDING`.
 - Notificações por e-mail, dashboard visual, limpeza ou arquivamento automático de entregas.
 - Rate limiting de saída, múltiplos workers, circuit breaker, garantia de entrega eventual, exatamente uma vez ou ordenação global.
-- Assinatura que inclua timestamp e validação de idade da mensagem.
 
 ---
 
 ### Requisitos funcionais
 
-#### FR-001 Configurar endpoints de webhook
-Usuários vinculados ao cliente devem criar, listar, editar e remover endpoints HTTPS ativos e selecionar os status de pedido que desejam receber.
+#### FR-001 Cadastrar endpoint de webhook
+Usuários autenticados devem cadastrar um endpoint HTTPS para um cliente, com uma secret gerada pela plataforma.
 
 **Fluxo principal**
-- Usuário autenticado e vinculado ao cliente cadastra URL HTTPS e uma lista não vazia de status.
-- A plataforma gera uma secret exclusiva, persiste a configuração e a retorna somente na criação.
-- Usuário lista, atualiza URL, filtros ou estado ativo, ou remove o endpoint.
+- Usuário autenticado envia URL HTTPS, cliente e a lista não vazia de status.
+- A plataforma gera a secret e persiste a configuração ativa.
+- A API retorna a configuração criada e a secret.
+
+**Fluxos alternativos e exceções**
+- O `customer_id` é enviado no corpo ou no caminho da requisição; ele não é inferido do JWT.
+
+**Erros previstos**
+- URL não HTTPS ou lista de status vazia retorna erro de validação.
+- Usuário sem autenticação recebe erro de acesso.
+
+**Prioridade:** alta
+
+---
+
+#### FR-002 Listar endpoints de webhook
+Usuários autenticados devem consultar os endpoints configurados para um cliente.
+
+**Fluxo principal**
+- Usuário autenticado solicita a lista de webhooks de um cliente.
+- A API retorna as configurações de endpoint e seus filtros de status.
+
+**Fluxos alternativos e exceções**
+- A lista pode não conter endpoints cadastrados para o cliente.
+
+**Erros previstos**
+- Usuário sem autenticação recebe erro de acesso.
+
+**Prioridade:** media
+
+---
+
+#### FR-003 Editar ou remover endpoint de webhook
+Usuários autenticados devem atualizar a configuração de um endpoint ou removê-lo.
+
+**Fluxo principal**
+- Usuário autenticado atualiza URL, filtros de status ou estado ativo do endpoint.
+- Usuário autenticado pode remover o endpoint que não será mais utilizado.
 
 **Fluxos alternativos e exceções**
 - Alterar filtros não cancela entregas já elegíveis; a URL atualizada é usada para entregas pendentes.
@@ -73,14 +107,31 @@ Usuários vinculados ao cliente devem criar, listar, editar e remover endpoints 
 
 **Erros previstos**
 - URL não HTTPS ou lista de status vazia retorna erro de validação.
-- Usuário sem autenticação ou sem vínculo com o cliente recebe erro de acesso.
 - Endpoint inexistente retorna erro de recurso não encontrado.
+
+**Prioridade:** media
+
+---
+
+#### FR-004 Filtrar notificações por status
+Cada endpoint deve receber somente eventos dos status de pedido selecionados na sua configuração.
+
+**Fluxo principal**
+- Usuário informa a lista de status de interesse na criação ou edição do endpoint.
+- Na mudança de status, o sistema seleciona os endpoints ativos cujo filtro contém o novo status.
+- Sem endpoint interessado, o sistema não registra evento na outbox.
+
+**Fluxos alternativos e exceções**
+- Filtros diferentes podem ser configurados para endpoints distintos do mesmo cliente.
+
+**Erros previstos**
+- Lista de status vazia retorna erro de validação.
 
 **Prioridade:** alta
 
 ---
 
-#### FR-002 Publicar evento na mudança de status
+#### FR-005 Publicar evento na mudança de status
 O sistema deve registrar um snapshot do pedido e uma entrega por endpoint elegível na mesma transação da mudança de status.
 
 **Fluxo principal**
@@ -100,7 +151,7 @@ O sistema deve registrar um snapshot do pedido e uma entrega por endpoint elegí
 
 ---
 
-#### FR-003 Entregar eventos de forma assíncrona
+#### FR-006 Entregar eventos de forma assíncrona
 Um worker separado deve enviar eventos pendentes aos endpoints públicos configurados, preservar o `event_id` e aplicar retentativas e DLQ.
 
 **Fluxo principal**
@@ -122,7 +173,7 @@ Um worker separado deve enviar eventos pendentes aos endpoints públicos configu
 
 ---
 
-#### FR-004 Consultar histórico de entregas
+#### FR-007 Consultar histórico de entregas
 Usuários vinculados ao cliente devem consultar o histórico das últimas 100 entregas de um endpoint.
 
 **Fluxo principal**
@@ -140,7 +191,7 @@ Usuários vinculados ao cliente devem consultar o histórico das últimas 100 en
 
 ---
 
-#### FR-005 Rotacionar e consultar secrets
+#### FR-008 Rotacionar e consultar secrets
 Usuários vinculados devem rotacionar a secret de um endpoint e consultar identificadores de chave sem expor secrets já reveladas.
 
 **Fluxo principal**
@@ -160,7 +211,7 @@ Usuários vinculados devem rotacionar a secret de um endpoint e consultar identi
 
 ---
 
-#### FR-006 Reprocessar eventos da DLQ
+#### FR-009 Reprocessar eventos da DLQ
 Administradores vinculados ao cliente devem solicitar replay de uma entrada da DLQ, preservando sua identidade e registrando auditoria.
 
 **Fluxo principal**
@@ -193,8 +244,8 @@ Disponibilidade
 Segurança e autorização
 - Autenticação é obrigatória para gerenciamento e histórico; autorização exige vínculo com o cliente do recurso.
 - Replay exige papel ADMIN vinculado ao cliente e auditoria persistida.
-- Cada endpoint usa secret exclusiva em secret manager e HMAC-SHA256 sobre os bytes do payload.
-- Aceitar apenas destinos públicos HTTPS e redirecionamentos HTTPS para destinos públicos.
+- Cada endpoint usa secret exclusiva em secret manager e HMAC-SHA256 sobre os bytes do payload; com proteção por timestamp, assina timestamp e payload.
+- Aceitar URLs HTTPS, inclusive destinos internos, e bloquear redirecionamentos para HTTP.
 
 Observabilidade
 - Logs Pino estruturados devem registrar `event_id`, `webhook_id`, pedido, cliente, reserva, resultado, status HTTP e duração.
@@ -225,14 +276,14 @@ Abordagem
 - Outbox transacional no MySQL: o serviço de pedidos registra eventos e entregas na mesma transação da mudança de status, enquanto um worker único em processo separado faz o envio assíncrono.
 
 Componentes
-- Módulo `src/modules/webhooks` com controller, service, repository, routes e schemas Zod.
+- Arquivo planejado a criar: módulo `src/modules/webhooks` com controller, service, repository, routes e schemas Zod.
 - Serviço de pedidos integrado por `publishWebhookEvent(tx, order, fromStatus, toStatus)`.
-- Worker `src/worker.ts` com `PrismaClient` próprio, polling e processador de entregas.
+- Arquivo planejado a criar: worker `src/worker.ts` com `PrismaClient` próprio, polling e processador de entregas.
 - MySQL como fonte de verdade para configurações, outbox, entregas, tentativas, DLQ, chaves e auditoria.
 - Secret manager, com provedor ainda a ser definido pela plataforma.
 
 Integrações
-- Endpoints HTTPS públicos configurados pelos clientes recebem notificações HTTP POST assinadas.
+- Endpoints HTTPS configurados pelos clientes recebem notificações HTTP POST assinadas.
 - Secret manager armazena secrets HMAC por endpoint.
 - Middleware de autenticação evolui para validar vínculo e papel por cliente.
 
@@ -250,9 +301,9 @@ Integrações
 - **Justificativa:** oferece recuperação de falhas sem a complexidade de coordenação necessária para exatamente uma vez.
 - **Trade-off:** destinatários devem deduplicar por `X-Event-Id`, e replay pode ser recebido fora da ordem.
 
-#### Decisão: Assinar somente o payload com HMAC-SHA256
-- **Justificativa:** permite validar autenticidade e integridade com uma integração simples para os clientes.
-- **Trade-off:** não limita a idade da mensagem; a deduplicação por `event_id` continua obrigatória.
+#### Decisão: Assinar eventos com HMAC-SHA256 e suportar proteção por timestamp
+- **Justificativa:** permite validar autenticidade e integridade do payload e, quando habilitada, limitar a idade da mensagem com `X-Timestamp`.
+- **Trade-off:** o destinatário precisa concordar sobre os bytes assinados e sincronizar relógios quando a proteção por timestamp estiver habilitada; a deduplicação por `event_id` continua obrigatória.
 
 ---
 
@@ -265,7 +316,7 @@ A área de Plataforma precisa definir e disponibilizar o provedor, SDK, polític
 O time responsável pela API precisa criar vínculos usuário-cliente e papéis por cliente, migrar usuários existentes e restringir o registro público de ADMIN antes da ativação.
 
 #### organizacional: Revisão de segurança
-Sofia, ou a equipe de Segurança, precisa revisar HMAC, geração e rotação de secrets e as proteções para destinos públicos antes do deploy.
+Sofia, ou a equipe de Segurança, precisa revisar HMAC, geração e rotação de secrets e o envio para destinos HTTPS antes do deploy.
 
 ---
 
@@ -298,12 +349,12 @@ Sofia, ou a equipe de Segurança, precisa revisar HMAC, geração e rotação de
   - Bloquear uso da chave afetada quando a compensação falhar.
 - **Plano de contingência:** reconciliar manualmente e, se necessário, gerar novo `kid` e secret.
 
-#### Destino público mal configurado ou redirecionado
+#### Destino HTTPS mal configurado ou redirecionado
 - **Probabilidade:** media
 - **Impacto:** envio a destino indevido pode expor dados de pedidos.
 - **Mitigação:**
-  - Validar HTTPS e destino público no cadastro e antes do envio.
-  - Permitir somente redirecionamentos HTTPS para destinos públicos.
+  - Validar HTTPS no cadastro e antes do envio.
+  - Bloquear redirecionamentos para HTTP.
   - Submeter a implementação à revisão de segurança.
 - **Plano de contingência:** desativar o endpoint afetado, investigar o envio e corrigir a configuração.
 
@@ -316,8 +367,8 @@ Checklist objetivo que define se a feature está pronta.
 - Falha ao persistir evento, entrega ou falha por tamanho reverte status, estoque e histórico; payload de 65.537 bytes não é enviado.
 - O worker consulta pendências a cada 2 segundos, processa até 100 entregas por lote e aplica timeout HTTP de 10 segundos.
 - Resposta 2xx conclui a entrega; falhas usam as cinco esperas definidas e no máximo seis reservas por ciclo, com DLQ persistente ao esgotar.
-- Cada envio contém `X-Event-Id`, `X-Webhook-Id`, `X-Key-Id` e assinatura HMAC-SHA256 verificável sobre o payload.
-- Endpoints e redirecionamentos para destinos não públicos ou não HTTPS são recusados ou bloqueados.
+- Cada envio contém `X-Event-Id`, `X-Webhook-Id`, `X-Key-Id`, `X-Timestamp` e assinatura HMAC-SHA256 verificável sobre os bytes definidos para o modo de assinatura.
+- Endpoints não HTTPS e redirecionamentos para HTTP são recusados ou bloqueados.
 - CRUD, histórico e secrets negam acesso sem vínculo; replay exige ADMIN vinculado e gera registro de auditoria.
 - A rotação mantém a chave anterior por até 24 horas e nenhuma secret é revelada mais de uma vez.
 - Logs operacionais incluem identificadores e resultado sem expor secrets, tokens, payloads ou respostas externas.
@@ -330,7 +381,7 @@ Checklist objetivo que define se a feature está pronta.
 Tipos de teste obrigatórios
 - Testes unitários para regras de elegibilidade, assinatura, retentativas, rotação de chave e autorização.
 - Testes de integração para mudança de status, persistência transacional da outbox, worker, envio HTTP, DLQ e replay.
-- Testes de segurança para autorização por vínculo e papel, proteção de destinos públicos e não exposição de secrets nos logs.
+- Testes de segurança para autorização por vínculo e papel, validação de HTTPS, bloqueio de redirecionamento para HTTP e não exposição de secrets nos logs.
 
 Estratégia de validação
 - Executar testes unitários e de integração automatizados e QA manual guiado por roteiro cobrindo cadastro, entrega bem-sucedida, falhas, recuperação após reinício, rotação, histórico e replay.
